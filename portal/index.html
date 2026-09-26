@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payments Platform · Local</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1c1b18; --muted: #6b6860; --line: #e4e1d8;
+    --up: #1f8a4c; --down: #c2412d; --idle: #a8a49a; --accent: #2b5fd9; --code: #f0eee8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141412; --panel: #1d1d1a; --ink: #ecebe6; --muted: #9a978d; --line: #2e2d29;
+      --up: #4cc38a; --down: #f0785f; --idle: #6b6860; --accent: #7aa2ff; --code: #26251f;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .summary { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .summary b { color: var(--ink); }
+  section { margin-top: 28px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+       margin: 0 0 10px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+          display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .top { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--idle); }
+  .dot.up { background: var(--up); box-shadow: 0 0 0 3px color-mix(in srgb, var(--up) 20%, transparent); }
+  .dot.down { background: var(--down); }
+  .name { font-weight: 600; flex: 1; min-width: 0; }
+  .name a { color: inherit; text-decoration: none; }
+  .name a:hover { color: var(--accent); }
+  .state { font-size: 12px; color: var(--muted); }
+  .desc { color: var(--muted); margin: 0; }
+  .links { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+  .links a { color: var(--accent); text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  code, .cmd { font: 12px/1.45 ui-monospace, "Cascadia Code", Consolas, monospace; }
+  .cmd { background: var(--code); border-radius: 6px; padding: 7px 9px; display: flex; gap: 8px;
+         align-items: flex-start; }
+  .cmd span { flex: 1; overflow-x: auto; white-space: pre; }
+  button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--panel);
+           color: var(--ink); border-radius: 5px; padding: 1px 7px; cursor: pointer; flex: none; }
+  button:hover { border-color: var(--accent); }
+  .planned { opacity: 0.6; }
+  .tag { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); }
+  footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+const { useEffect, useState } = React;
+const html = htm.bind(React.createElement);
+const ROOT = "C:\\projects\\test\\mini-payments-platform";
+
+// check: URL probed for liveness (no-cors: any HTTP answer = up, connection refused = down).
+// Services without an HTTP endpoint have no check and show their connection details instead.
+const GROUPS = [
+  { title: "Orchestration & warehouse", services: [
+    { name: "Airflow", url: "http://localhost:8088", check: "http://localhost:8088/api/v2/monitor/health",
+      desc: "payments_pipeline and fraud_model_training. No login.",
+      links: [["DAGs", "http://localhost:8088/dags"]],
+      start: `cd ${ROOT}\\orchestration; docker compose --env-file ../.env up -d` },
+    { name: "dbt docs", url: "http://localhost:8081", check: "http://localhost:8081",
+      desc: "Model docs, tests and lineage graph. Runs on demand.",
+      start: `cd ${ROOT}\\warehouse\\dbt; uv run dbt docs generate --profiles-dir .; uv run dbt docs serve --profiles-dir . --port 8081` },
+    { name: "DuckDB UI", url: "http://localhost:4213", check: "http://localhost:4213",
+      desc: "SQL notebook over warehouse.duckdb. Pause Airflow first: DuckDB allows one writer.",
+      start: `cd ${ROOT}\\warehouse\\dbt; uv run python -c "import duckdb; c=duckdb.connect('../../warehouse.duckdb'); c.execute('INSTALL ui; LOAD ui; CALL start_ui()'); input('Enter to stop')"` },
+  ]},
+  { title: "Streaming", services: [
+    { name: "Redpanda Console", url: "http://localhost:8085", check: "http://localhost:8085",
+      desc: "Topics, messages and consumer groups.",
+      links: [["payments.transactions", "http://localhost:8085/topics/payments.transactions"]],
+      start: "docker start mpp-redpanda mpp-redpanda-console" },
+    { name: "Redpanda admin API", url: "http://localhost:9644/v1/status/ready", check: "http://localhost:9644/v1/status/ready",
+      desc: "Broker health. Kafka clients use localhost:9092.",
+      links: [["Schema registry", "http://localhost:18081/subjects"]],
+      start: "docker start mpp-redpanda" },
+    { name: "RedisInsight", url: "http://localhost:5540", check: "http://localhost:5540",
+      desc: "Online feature store. Add database: host mpp-redis, port 6379.",
+      start: "docker start mpp-redis mpp-redisinsight" },
+    { name: "Feature consumer metrics", url: "http://localhost:8000/metrics", check: "http://localhost:8000/metrics",
+      desc: "Events processed, duplicates, late, lag. Only while the consumer runs.",
+      start: `cd ${ROOT}\\streaming; uv run python consumer.py --score-url http://127.0.0.1:8090/score` },
+  ]},
+  { title: "Machine learning", services: [
+    { name: "MLflow", url: "http://localhost:5000", check: "http://localhost:5000/health",
+      desc: "Experiment 'fraud' and the fraud model registry (champion / challenger).",
+      links: [["Models", "http://localhost:5000/#/models/fraud"], ["Experiments", "http://localhost:5000/#/experiments"]],
+      start: "docker start mpp-mlflow" },
+    { name: "Fraud scorer", url: "http://localhost:8090/docs", check: "http://localhost:8090/healthz",
+      desc: "Serves fraud@champion. Swagger UI to try POST /score.",
+      links: [["Health", "http://localhost:8090/healthz"], ["Metrics", "http://localhost:8090/metrics/"]],
+      start: `cd ${ROOT}\\ml\\serve; ..\\.venv\\Scripts\\python -m uvicorn app:app --host 0.0.0.0 --port 8090` },
+  ]},
+  { title: "Planned", planned: true, services: [
+    { name: "Grafana", url: "http://localhost:3000", module: "Module 9", desc: "Dashboards for pipelines, streaming and models." },
+    { name: "Prometheus", url: "http://localhost:9090", module: "Module 9", desc: "Metrics and alert rules." },
+    { name: "LiteLLM gateway", url: "http://localhost:4000/ui", module: "Module 10", desc: "AI gateway: keys, budgets, routing." },
+  ]},
+];
+
+const DATA_STORES = [
+  ["Postgres (source)", "localhost:5433", "user/password payments · db payments, airflow", "docker start mpp-postgres"],
+  ["Kafka API (Redpanda)", "localhost:9092", "topic payments.transactions, 3 partitions", "docker start mpp-redpanda"],
+  ["Redis (online features)", "localhost:6379", "features:card:<token>, merchant:<id>:amount_stats", "docker start mpp-redis"],
+  ["DuckDB warehouse", `${ROOT}\\warehouse.duckdb`, "schemas raw, analytics, role_analyst, role_fraud_ops", null],
+];
+
+async function probe(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    await fetch(url, { mode: "no-cors", cache: "no-store", signal: controller.signal });
+    return "up";
+  } catch {
+    return "down";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function useStatuses() {
+  const [statuses, setStatuses] = useState({});
+  const [checkedAt, setCheckedAt] = useState(null);
+  useEffect(() => {
+    const services = GROUPS.flatMap(g => g.services).filter(s => s.check);
+    let stopped = false;
+    const run = async () => {
+      const results = await Promise.all(services.map(async s => [s.name, await probe(s.check)]));
+      if (!stopped) { setStatuses(Object.fromEntries(results)); setCheckedAt(new Date()); }
+    };
+    run();
+    const id = setInterval(run, 15000);
+    return () => { stopped = true; clearInterval(id); };
+  }, []);
+  return [statuses, checkedAt];
+}
+
+function Copy({ text }) {
+  const [label, setLabel] = useState("Copy");
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); setLabel("Copied"); }
+    catch { setLabel("Blocked: select the text"); }  // clipboard needs http://localhost, not file://
+    setTimeout(() => setLabel("Copy"), 2000);
+  };
+  return html`<button onClick=${copy} title="Copy command">${label}</button>`;
+}
+
+function ServiceCard({ service, status, planned }) {
+  const state = planned ? "planned" : status || "checking";
+  const label = { up: "running", down: "not running", checking: "checking…", planned: service.module }[state];
+  return html`
+    <div class=${"card" + (planned ? " planned" : "")}>
+      <div class="top">
+        <span class=${"dot " + (state === "up" || state === "down" ? state : "")}></span>
+        <span class="name">${planned ? service.name : html`<a href=${service.url} target="_blank" rel="noopener">${service.name}</a>`}</span>
+        <span class=${planned ? "tag" : "state"}>${label}</span>
+      </div>
+      <p class="desc">${service.desc}</p>
+      ${!planned && html`<div class="links">
+        <a href=${service.url} target="_blank" rel="noopener">${service.url.replace("http://", "")}</a>
+        ${(service.links || []).map(([text, href]) => html`<a key=${href} href=${href} target="_blank" rel="noopener">${text}</a>`)}
+      </div>`}
+      ${state === "down" && service.start && html`<div class="cmd"><span>${service.start}</span><${Copy} text=${service.start} /></div>`}
+    </div>`;
+}
+
+function App() {
+  const [statuses, checkedAt] = useStatuses();
+  const checked = Object.values(statuses);
+  const up = checked.filter(s => s === "up").length;
+  return html`
+    <main>
+      <header>
+        <h1>Payments platform · local</h1>
+        <span class="summary">
+          ${checkedAt ? html`<b>${up}</b> of ${checked.length} web services up · checked ${checkedAt.toLocaleTimeString()}` : "checking services…"}
+        </span>
+      </header>
+      ${GROUPS.map(group => html`
+        <section key=${group.title}>
+          <h2>${group.title}</h2>
+          <div class="grid">
+            ${group.services.map(s => html`<${ServiceCard} key=${s.name} service=${s} status=${statuses[s.name]} planned=${group.planned} />`)}
+          </div>
+        </section>`)}
+      <section>
+        <h2>Data stores (no web UI)</h2>
+        <div class="grid">
+          ${DATA_STORES.map(([name, address, detail, start]) => html`
+            <div class="card" key=${name}>
+              <div class="top"><span class="name">${name}</span></div>
+              <div class="cmd"><span>${address}</span><${Copy} text=${address} /></div>
+              <p class="desc">${detail}</p>
+              ${start && html`<p class="desc">Start: <code>${start}</code></p>`}
+            </div>`)}
+        </div>
+      </section>
+      <footer>
+        Status checks run every 15 s from this page. Serve it with
+        <code>uv run python -m http.server 8099 -d portal</code> from the project folder and open
+        http://localhost:8099, so the browser allows the checks.
+      </footer>
+    </main>`;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+</script>
+</body>
+</html>
