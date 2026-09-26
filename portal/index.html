@@ -95,17 +95,13 @@ const GROUPS = [
       start: "docker start mpp-redis mpp-redisinsight" },
     { name: "Feature consumer metrics", url: "http://localhost:8000/metrics", check: "http://localhost:8000/metrics",
       desc: "Events processed, duplicates, late, lag. Only while the consumer runs.",
-      start: `cd ${ROOT}\\streaming; uv run python consumer.py --score-url http://127.0.0.1:8090/score` },
+      start: `cd ${ROOT}\\streaming; uv run python consumer.py --score-url http://127.0.0.1:8091/score` },
   ]},
   { title: "Machine learning", services: [
     { name: "MLflow", url: "http://localhost:5000", check: "http://localhost:5000/health",
       desc: "Experiment 'fraud' and the fraud model registry (champion / challenger).",
       links: [["Models", "http://localhost:5000/#/models/fraud"], ["Experiments", "http://localhost:5000/#/experiments"]],
       start: "docker start mpp-mlflow" },
-    { name: "Fraud scorer", url: "http://localhost:8090/docs", check: "http://localhost:8090/healthz",
-      desc: "Serves fraud@champion. Swagger UI to try POST /score.",
-      links: [["Health", "http://localhost:8090/healthz"], ["Metrics", "http://localhost:8090/metrics/"]],
-      start: `cd ${ROOT}\\ml\\serve; ..\\.venv\\Scripts\\python -m uvicorn app:app --host 0.0.0.0 --port 8090` },
   ]},
   { title: "Kubernetes (kind cluster 'payments')", services: [
     { name: "Fraud scorer on Kubernetes", url: "http://localhost:8091/docs", check: "http://localhost:8091/readyz",

@@ -151,9 +151,9 @@ compose file for the `--allowed-hosts` it needs). Artifacts are proxied by MLflo
 ```powershell
 cd warehouse\dbt; uv run dbt build --profiles-dir . --select +ml_transaction_features   # training features
 cd ml; uv run python train.py                        # train, log, register; promote if it beats champion
-cd ml\serve; ..\.venv\Scripts\python -m uvicorn app:app --port 8090   # serves fraud@champion
+# the scorer (fraud@champion) runs on Kubernetes at http://127.0.0.1:8091: see Module 8
 cd streaming; uv run python bootstrap_online_store.py --reset          # load Redis from the warehouse
-cd streaming; uv run python consumer.py --score-url http://127.0.0.1:8090/score
+cd streaming; uv run python consumer.py --score-url http://127.0.0.1:8091/score
 cd ml; uv run python check_skew.py --since 2026-09-26T21:00:00   # online vs offline features
 ```
 
@@ -193,6 +193,22 @@ read-only root filesystem, readiness on `/readyz` (model loaded) and liveness on
 
 Docker Desktop's WSL VM defaults to half the machine's RAM (8 GB here); stop Airflow and run
 MLflow with `--workers 1` while the cluster is up.
+
+The streaming consumer scores through this deployment (`--score-url http://127.0.0.1:8091/score`).
+
+Tested under ~140 req/s:
+
+| Scenario | Result |
+|---|---|
+| Load at 24 concurrent clients | HPA scaled 2 → 5 pods |
+| `helm upgrade` replacing every pod | 0 of 18,744 requests failed |
+| Pod force-killed | 0 of 8,634 failed (4 stale connections re-sent) |
+| Worker node killed while its pod carried 2/3 of traffic | 6 of 20,241 failed (the requests in flight on that node); node marked NotReady after 54 s, replacements ready 51 s later |
+
+Pods are forced onto different nodes (`topologySpreadConstraints`, `DoNotSchedule`,
+`matchLabelKeys: [pod-template-hash]` so old pods mid-rollout don't skew placement) and leave a
+failed node after 30 s instead of the default 300 s. Kubernetes doesn't rebalance after a node
+recovers; run `kubectl -n fraud rollout restart deploy/fraud-scorer` (production: a descheduler).
 
 ## Quick start (all services)
 

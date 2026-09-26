@@ -3,6 +3,6 @@ global:
 rule_files: [/etc/prometheus/alerts.yml]
 scrape_configs:
   - job_name: fraud-scorer
-    static_configs: [{targets: ["host.docker.internal:8090"]}]
+    static_configs: [{targets: ["host.docker.internal:8091"]}]   # Kubernetes NodePort
   - job_name: streaming-consumer
     static_configs: [{targets: ["host.docker.internal:8000"]}]

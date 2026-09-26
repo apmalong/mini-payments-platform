@@ -7,7 +7,8 @@ POST /score takes a transaction event (the same JSON as the payments.transaction
 Windowed features come from the request's `features` if the caller already has them (the
 streaming consumer does), otherwise from the online store in Redis.
 
-    uvicorn app:app --port 8090          # from ml/serve, with the ml virtualenv
+    In the platform it runs on Kubernetes (k8s/helm/fraud-scorer) at http://127.0.0.1:8091.
+    For development: uvicorn app:app --port 8090   # from ml/serve, with the ml virtualenv
 """
 import os
 import sys

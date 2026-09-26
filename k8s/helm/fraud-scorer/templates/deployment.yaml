@@ -22,6 +22,21 @@ spec:
         rollout-id: {{ .Values.rolloutId | quote }}
     spec:
       terminationGracePeriodSeconds: 20
+      tolerations:
+        - {key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute,
+           tolerationSeconds: {{ .Values.nodeFailureToleranceSeconds }}}
+        - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute,
+           tolerationSeconds: {{ .Values.nodeFailureToleranceSeconds }}}
+      # Spread replicas across nodes so one node failure can't take them all. Hard rule: a soft one
+      # let a rollout put both replicas on one node.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor   # a failed (tainted) node is not a place to spread to
+          matchLabelKeys: [pod-template-hash]   # balance each revision's pods, ignoring old ones mid-rollout
+          labelSelector:
+            matchLabels: {{- include "fraud-scorer.selector" . | nindent 14 }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

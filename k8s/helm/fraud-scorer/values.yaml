@@ -22,5 +22,9 @@ replicaCount: 2         # used only when autoscaling is disabled
 service:
   nodePort: 30080       # kind maps it to localhost:8091 (k8s/kind.yaml)
 
+# How long pods stay bound to a node that has stopped responding before being rescheduled.
+# Kubernetes' default is 300s; a scorer in the payment path shouldn't wait five minutes.
+nodeFailureToleranceSeconds: 30
+
 # Change to force a rolling restart without a new image (the zero-downtime test uses this).
 rolloutId: "1"

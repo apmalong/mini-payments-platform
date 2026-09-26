@@ -244,7 +244,7 @@ def main() -> None:
     parser.add_argument("--allowed-lateness", type=float, default=600, help="seconds")
     parser.add_argument("--flush-every", type=float, default=10, help="seconds between Parquet flushes/commits")
     parser.add_argument("--metrics-port", type=int, default=8000)
-    parser.add_argument("--score-url", help="fraud scoring service, e.g. http://127.0.0.1:8090/score (not localhost: on Windows that tries IPv6 first and stalls ~2s per request)")
+    parser.add_argument("--score-url", help="fraud scoring service, e.g. http://127.0.0.1:8091/score, the scorer on Kubernetes (not localhost: on Windows that tries IPv6 first and stalls ~2s per request)")
     args = parser.parse_args()
 
     load_env()
