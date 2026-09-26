@@ -109,9 +109,20 @@ const GROUPS = [
       links: [["Ready", "http://localhost:8091/readyz"], ["Metrics", "http://localhost:8091/metrics/"]],
       start: `cd ${ROOT}\\k8s; kind create cluster --config kind.yaml; kind load docker-image fraud-scorer:local --name payments; helm upgrade --install fraud-scorer helm/fraud-scorer -n fraud --create-namespace --wait` },
   ]},
+  { title: "Observability", services: [
+    { name: "Grafana", url: "http://localhost:3000", check: "http://localhost:3000/api/health",
+      desc: "Dashboard 'Payments platform': freshness, scoring SLOs, streaming, drift, alerts. No login.",
+      links: [["Dashboard", "http://localhost:3000/d/payments-platform"]],
+      start: "docker start mpp-grafana" },
+    { name: "Prometheus", url: "http://localhost:9090", check: "http://localhost:9090/-/ready",
+      desc: "Runs in the kind cluster; bridged to localhost:9090. Alert rules and SLO recording rules.",
+      links: [["Alerts", "http://localhost:9090/alerts"], ["Targets", "http://localhost:9090/targets"]],
+      start: "docker start mpp-prometheus-port" },
+    { name: "Freshness & drift exporter", url: "http://localhost:8001/metrics", check: "http://localhost:8001/metrics",
+      desc: "Data age per layer (source, raw, mart) and feature PSI vs training data.",
+      start: `cd ${ROOT}\\observability; uv run python exporter.py` },
+  ]},
   { title: "Planned", planned: true, services: [
-    { name: "Grafana", url: "http://localhost:3000", module: "Module 9", desc: "Dashboards for pipelines, streaming and models." },
-    { name: "Prometheus", url: "http://localhost:9090", module: "Module 9", desc: "Metrics and alert rules." },
     { name: "LiteLLM gateway", url: "http://localhost:4000/ui", module: "Module 10", desc: "AI gateway: keys, budgets, routing." },
   ]},
 ];

@@ -1,6 +1,6 @@
 image:
   repository: fraud-scorer
-  tag: local            # kind load docker-image fraud-scorer:local --name payments
+  tag: m9               # docker build -f ml/serve/Dockerfile -t fraud-scorer:m9 . ; kind load docker-image fraud-scorer:m9 --name payments
   pullPolicy: IfNotPresent
 
 # Dependencies run outside the cluster, on the Docker host.

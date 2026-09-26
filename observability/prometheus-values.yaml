@@ -1,0 +1,157 @@
+# Module 9: Prometheus in the kind cluster (prometheus-community/prometheus chart).
+#   helm upgrade --install prometheus prometheus-community/prometheus -n monitoring --create-namespace \
+#     -f observability/prometheus-values.yaml
+# In the cluster so it can discover and scrape each scorer pod (the chart's kubernetes-pods job reads
+# the prometheus.io/* annotations); host processes are scraped through host.docker.internal.
+
+alertmanager: {enabled: false}              # alerts show in Prometheus and Grafana; no paging locally
+prometheus-pushgateway: {enabled: false}
+prometheus-node-exporter: {enabled: false}  # kind nodes share the host; not meaningful here
+kube-state-metrics: {enabled: false}        # memory is tight; `up` covers scorer availability
+
+server:
+  retention: 2d
+  persistentVolume: {enabled: false}        # local demo: metrics reset if the pod restarts
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+  service:
+    type: NodePort
+    nodePort: 30090                         # published on localhost:9090 by the mpp-prometheus-port bridge
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 768Mi}
+
+extraScrapeConfigs: |
+  - job_name: streaming-consumer
+    static_configs: [{targets: ["host.docker.internal:8000"]}]
+  - job_name: payments-exporter
+    static_configs: [{targets: ["host.docker.internal:8001"]}]
+
+serverFiles:
+  recording_rules.yml:
+    groups:
+      - name: slo
+        rules:
+          # SLO 1: 99.9% of /score requests succeed (non-5xx).
+          - record: slo:scorer_availability:ratio_rate5m
+            expr: |
+              1 - (sum(rate(http_requests_total{path="/score", status=~"5.."}[5m])) or vector(0))
+                / sum(rate(http_requests_total{path="/score"}[5m]))
+          # SLO 2: 99% of scores within 50 ms.
+          - record: slo:scorer_latency_under_50ms:ratio_rate5m
+            expr: |
+              sum(rate(score_latency_seconds_bucket{le="0.05"}[5m]))
+                / sum(rate(score_latency_seconds_count[5m]))
+          # SLO 3: fct_transactions fresh within 15 minutes, 99% of the time.
+          - record: slo:mart_fresh:bool
+            expr: payments_freshness_seconds{layer="mart"} < bool 900
+          - record: scorer:review_rate:ratio_rate30m
+            expr: |
+              sum(rate(score_decisions_total{decision="review"}[30m]))
+                / sum(rate(score_decisions_total[30m]))
+
+  alerting_rules.yml:
+    groups:
+      - name: data-pipeline
+        rules:
+          - alert: MartDataStale
+            expr: payments_freshness_seconds{layer="mart"} > 900
+            for: 5m
+            labels: {severity: page}
+            annotations:
+              summary: "fct_transactions is {{ $value | humanizeDuration }} old (SLO: 15 minutes)"
+              runbook: docs/runbooks/mart-data-stale.md
+          - alert: IngestionStalled
+            expr: payments_freshness_seconds{layer="raw"} - ignoring(layer) payments_freshness_seconds{layer="source"} > 900
+            for: 5m
+            labels: {severity: page}
+            annotations:
+              summary: "Raw layer is {{ $value | humanizeDuration }} behind the source: the sync isn't landing data"
+              runbook: docs/runbooks/mart-data-stale.md
+          - alert: TransformStalled
+            expr: payments_freshness_seconds{layer="mart"} - ignoring(layer) payments_freshness_seconds{layer="raw"} > 900
+            for: 5m
+            labels: {severity: page}
+            annotations:
+              summary: "Marts are {{ $value | humanizeDuration }} behind raw: dbt isn't running or is failing"
+              runbook: docs/runbooks/mart-data-stale.md
+          - alert: SourceQuiet
+            expr: payments_freshness_seconds{layer="source"} > 900
+            for: 10m
+            labels: {severity: ticket}
+            annotations:
+              summary: "No new transactions in the source for {{ $value | humanizeDuration }}"
+              runbook: docs/runbooks/mart-data-stale.md
+          - alert: FreshnessCheckFailing
+            expr: payments_check_success == 0
+            for: 10m
+            labels: {severity: ticket}
+            annotations:
+              summary: "The {{ $labels.check }} freshness check can't read its source"
+              runbook: docs/runbooks/mart-data-stale.md
+
+      - name: streaming
+        rules:
+          - alert: ConsumerDown
+            expr: up{job="streaming-consumer"} == 0
+            for: 5m
+            labels: {severity: page}
+            annotations:
+              summary: "The feature consumer isn't running: online features and scores have stopped"
+              runbook: docs/runbooks/consumer.md
+          - alert: ConsumerLagHigh
+            expr: sum(stream_consumer_lag) > 1000
+            for: 5m
+            labels: {severity: page}
+            annotations:
+              summary: "Feature consumer is {{ $value }} messages behind"
+              runbook: docs/runbooks/consumer.md
+
+      - name: scoring
+        rules:
+          - alert: ScorerDown
+            expr: sum(up{app_kubernetes_io_name="fraud-scorer"}) < 1 or absent(up{app_kubernetes_io_name="fraud-scorer"})
+            for: 1m
+            labels: {severity: page}
+            annotations:
+              summary: "No fraud scorer pod is being scraped successfully"
+              runbook: docs/runbooks/scorer.md
+          - alert: ScorerErrorRate
+            expr: 1 - slo:scorer_availability:ratio_rate5m > 0.001
+            for: 5m
+            labels: {severity: page}
+            annotations:
+              summary: "{{ $value | humanizePercentage }} of /score requests are failing (SLO: 0.1%)"
+              runbook: docs/runbooks/scorer.md
+          - alert: ScorerLatencyHigh
+            expr: histogram_quantile(0.99, sum by (le) (rate(score_latency_seconds_bucket[5m]))) > 0.05
+            for: 5m
+            labels: {severity: ticket}
+            annotations:
+              summary: "Scoring p99 is {{ $value | humanizeDuration }} (SLO: 50 ms)"
+              runbook: docs/runbooks/scorer.md
+          - alert: ModelVersionsDiverged
+            expr: count(count_values("version", model_version{app_kubernetes_io_name="fraud-scorer"})) > 1
+            for: 10m
+            labels: {severity: ticket}
+            annotations:
+              summary: "Scorer pods have served different model versions for 10 minutes"
+              runbook: docs/runbooks/scorer.md
+
+      - name: model-quality
+        rules:
+          - alert: FeatureDrift
+            expr: payments_feature_psi > 0.25
+            for: 15m
+            labels: {severity: ticket}
+            annotations:
+              summary: "{{ $labels.feature }} has drifted from the training data (PSI {{ $value | printf \"%.2f\" }})"
+              runbook: docs/runbooks/model-drift.md
+          - alert: ReviewRateHigh
+            expr: scorer:review_rate:ratio_rate30m > 0.05
+            for: 15m
+            labels: {severity: ticket}
+            annotations:
+              summary: "{{ $value | humanizePercentage }} of transactions sent to review (expected about 1%)"
+              runbook: docs/runbooks/model-drift.md

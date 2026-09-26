@@ -44,6 +44,7 @@ LATENCY = Histogram("score_latency_seconds", "Time to score one transaction",
 SCORES = Histogram("fraud_score", "Distribution of fraud scores", buckets=[i / 10 for i in range(11)])
 DECISIONS = Counter("score_decisions_total", "Scoring decisions", ["decision", "feature_source"])
 MODEL_VERSION = Gauge("model_version", "Registered version of the model being served")
+REQUESTS = Counter("http_requests_total", "HTTP requests by path and status code", ["path", "status"])
 
 mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000"))
 client = MlflowClient()
@@ -78,6 +79,19 @@ class Champion:
 champion = Champion()
 app = FastAPI(title="fraud-scorer")
 app.mount("/metrics", make_asgi_app())
+
+
+@app.middleware("http")
+async def count_requests(request, call_next):
+    """Every response by status, including errors, so availability can be measured (SLO)."""
+    try:
+        response = await call_next(request)
+    except Exception:
+        REQUESTS.labels(request.url.path, "500").inc()
+        raise
+    if not request.url.path.startswith("/metrics"):
+        REQUESTS.labels(request.url.path, str(response.status_code)).inc()
+    return response
 
 
 @app.on_event("startup")

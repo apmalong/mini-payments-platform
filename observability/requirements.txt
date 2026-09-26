@@ -1,0 +1,3 @@
+prometheus-client
+psycopg[binary]
+duckdb==1.4.3

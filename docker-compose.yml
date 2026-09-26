@@ -66,20 +66,20 @@ services:
     volumes: [./gateway/litellm_config.yaml:/app/config.yaml:ro]
     ports: ["4000:4000"]
 
-  prometheus:
-    image: prom/prometheus:latest
-    profiles: [obs]
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
-    ports: ["9090:9090"]
-
+  # Prometheus runs in the kind cluster (observability/prometheus-values.yaml), reachable on
+  # localhost:9090 through the mpp-prometheus-port bridge; Grafana reads it via host.docker.internal.
   grafana:
     image: grafana/grafana:latest
     profiles: [obs]
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
-    volumes: [./observability/grafana/dashboards:/var/lib/grafana/dashboards]
+      GF_AUTH_ANONYMOUS_ENABLED: "true"        # local only
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/payments-platform.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports: ["3000:3000"]
 
 volumes:

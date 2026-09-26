@@ -20,6 +20,10 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         rollout-id: {{ .Values.rolloutId | quote }}
+        # Picked up by the in-cluster Prometheus (kubernetes-pods job).
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics/
     spec:
       terminationGracePeriodSeconds: 20
       tolerations:

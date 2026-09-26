@@ -210,6 +210,32 @@ Pods are forced onto different nodes (`topologySpreadConstraints`, `DoNotSchedul
 failed node after 30 s instead of the default 300 s. Kubernetes doesn't rebalance after a node
 recovers; run `kubectl -n fraud rollout restart deploy/fraud-scorer` (production: a descheduler).
 
+## Module 9: observability
+
+Prometheus runs in the kind cluster (it discovers each scorer pod from its `prometheus.io/*`
+annotations) and scrapes the host's consumer (:8000) and exporter (:8001). Grafana runs in Docker.
+
+```powershell
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm upgrade --install prometheus prometheus-community/prometheus -n monitoring --create-namespace -f observability/prometheus-values.yaml
+docker run -d --name mpp-prometheus-port --network kind -p 9090:9090 --restart unless-stopped alpine/socat TCP-LISTEN:9090,fork,reuseaddr TCP:payments-control-plane:30090
+docker compose --env-file .env --profile obs up -d            # Grafana, http://localhost:3000
+cd observability; uv run python exporter.py                   # freshness + drift metrics on :8001
+```
+
+kind's port mappings are fixed at cluster creation, so the `mpp-prometheus-port` container bridges
+localhost:9090 to Prometheus's NodePort instead of recreating the cluster.
+
+- **Dashboard** "Payments platform": is the data fresh (per layer), is scoring healthy (SLOs,
+  latency, decisions), is streaming keeping up, has the model's input drifted, active alerts.
+- **Alerts** with a runbook each in [docs/runbooks](docs/runbooks): stale data split by stage
+  (source / ingestion / transform), consumer down or lagging, scorer down / errors / latency /
+  diverged model versions, feature drift and review-rate shift.
+- **SLOs** in [docs/slos.md](docs/slos.md): scorer availability 99.9%, 99% of scores under 50 ms,
+  mart fresh within 15 minutes 99% of the time.
+- **Drift** is the population stability index of each live feature against the training data,
+  computed by the exporter (a lightweight stand-in for Evidently).
+
 ## Quick start (all services)
 
 Needs Docker Desktop 4.x (Compose v2 with profile support); tested with 4.91 / Engine 29.8.
