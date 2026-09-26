@@ -4,6 +4,6 @@ name: payments
 nodes:
   - role: control-plane
     extraPortMappings:
-      - {containerPort: 30080, hostPort: 8090}  # 8080 is taken by a local Apache
+      - {containerPort: 30080, hostPort: 8091}  # 8080 is a local Apache, 8090 the host-run scorer
   - role: worker
   - role: worker

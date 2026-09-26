@@ -87,7 +87,16 @@ def load_model() -> None:
 
 @app.get("/healthz")
 def healthz() -> dict:
+    """Liveness: the process is responsive."""
     return {"status": "ok", "model_version": champion.current[0] if champion.current else None}
+
+
+@app.get("/readyz")
+def readyz() -> dict:
+    """Readiness: only take traffic once a model is loaded."""
+    if champion.current is None:
+        raise HTTPException(503, "model not loaded")
+    return {"status": "ready", "model_version": champion.current[0]}
 
 
 @app.post("/score")

@@ -170,6 +170,30 @@ cd ml; uv run python check_skew.py --since 2026-09-26T21:00:00   # online vs off
 - Use `127.0.0.1`, not `localhost`, for the scorer URL: on Windows `localhost` tries IPv6 first
   and each request stalls ~2 s.
 
+## Module 8: Kubernetes
+
+A 3-node kind cluster running the fraud scorer from a Helm chart; MLflow and Redis stay on the
+Docker host (`host.docker.internal`).
+
+```powershell
+cd k8s
+kind create cluster --config kind.yaml                         # 1 control plane + 2 workers
+docker build -f ..\ml\serve\Dockerfile -t fraud-scorer:local ..
+kind load docker-image fraud-scorer:local --name payments
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm upgrade --install metrics-server metrics-server/metrics-server -n kube-system --set "args={--kubelet-insecure-tls}"
+helm upgrade --install fraud-scorer helm/fraud-scorer -n fraud --create-namespace --wait
+..\ml\.venv\Scripts\python loadtest.py --duration 120 --concurrency 24   # http://127.0.0.1:8091
+```
+
+The chart (`k8s/helm/fraud-scorer`): Deployment with CPU/memory requests and limits, non-root and
+read-only root filesystem, readiness on `/readyz` (model loaded) and liveness on `/healthz`,
+`maxUnavailable: 0` rolling updates with a `preStop` sleep, a HorizontalPodAutoscaler (2-5 pods at
+60% CPU), a PodDisruptionBudget, and a NodePort mapped to localhost:8091.
+
+Docker Desktop's WSL VM defaults to half the machine's RAM (8 GB here); stop Airflow and run
+MLflow with `--workers 1` while the cluster is up.
+
 ## Quick start (all services)
 
 Needs Docker Desktop 4.x (Compose v2 with profile support); tested with 4.91 / Engine 29.8.

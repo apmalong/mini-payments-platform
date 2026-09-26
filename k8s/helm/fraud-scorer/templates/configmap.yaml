@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "fraud-scorer.labels" . | nindent 4 }}
+data:
+  MLFLOW_TRACKING_URI: {{ .Values.mlflowTrackingUri | quote }}
+  REDIS_HOST: {{ .Values.redisHost | quote }}
+  HOME: /tmp

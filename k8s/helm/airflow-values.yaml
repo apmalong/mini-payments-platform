@@ -1,3 +1,0 @@
-# Module 8: official apache-airflow Helm chart
-executor: KubernetesExecutor
-# TODO: dags gitSync or volume mount, dbt image, resource requests/limits

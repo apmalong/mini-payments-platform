@@ -1,0 +1,9 @@
+mlflow-skinny==3.16.1
+lightgbm
+scikit-learn
+pandas
+fastapi
+uvicorn
+redis
+prometheus-client
+skops   # MLflow 3 saves sklearn-API models with skops, not pickle; mlflow-skinny doesn't include it

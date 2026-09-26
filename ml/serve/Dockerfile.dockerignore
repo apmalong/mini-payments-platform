@@ -1,0 +1,6 @@
+# Build context is the project root; send only what the image needs.
+*
+!ml/serve/requirements.txt
+!ml/serve/app.py
+!ml/features.py
+!warehouse/dbt/seeds/fx_rates.csv

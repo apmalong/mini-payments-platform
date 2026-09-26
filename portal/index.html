@@ -107,6 +107,12 @@ const GROUPS = [
       links: [["Health", "http://localhost:8090/healthz"], ["Metrics", "http://localhost:8090/metrics/"]],
       start: `cd ${ROOT}\\ml\\serve; ..\\.venv\\Scripts\\python -m uvicorn app:app --host 0.0.0.0 --port 8090` },
   ]},
+  { title: "Kubernetes (kind cluster 'payments')", services: [
+    { name: "Fraud scorer on Kubernetes", url: "http://localhost:8091/docs", check: "http://localhost:8091/readyz",
+      desc: "Helm release fraud-scorer in namespace fraud: 2-5 pods behind a NodePort, autoscaled on CPU.",
+      links: [["Ready", "http://localhost:8091/readyz"], ["Metrics", "http://localhost:8091/metrics/"]],
+      start: `cd ${ROOT}\\k8s; kind create cluster --config kind.yaml; kind load docker-image fraud-scorer:local --name payments; helm upgrade --install fraud-scorer helm/fraud-scorer -n fraud --create-namespace --wait` },
+  ]},
   { title: "Planned", planned: true, services: [
     { name: "Grafana", url: "http://localhost:3000", module: "Module 9", desc: "Dashboards for pipelines, streaming and models." },
     { name: "Prometheus", url: "http://localhost:9090", module: "Module 9", desc: "Metrics and alert rules." },
