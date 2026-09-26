@@ -1,0 +1,10 @@
+# Module 5: which classifications may appear in which layers, and how they must be masked.
+classifications:
+  restricted:
+    allowed_layers: [staging]
+    required_masking: [mask_email, mask_card_last4]
+  internal:
+    allowed_layers: [staging, intermediate, marts]
+roles:
+  analyst: {can_read: [internal]}
+  fraud_ops: {can_read: [internal, restricted]}

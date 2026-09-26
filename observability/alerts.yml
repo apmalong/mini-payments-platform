@@ -1,0 +1,16 @@
+groups:
+  - name: data-platform
+    rules:
+      - alert: FctTransactionsStale
+        expr: time() - payments_mart_last_updated_seconds{model="fct_transactions"} > 900
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: fct_transactions is more than 15 minutes stale
+          runbook: docs/runbooks/fct-transactions-stale.md
+      - alert: ScorerLatencyHigh
+        expr: histogram_quantile(0.99, rate(score_latency_seconds_bucket[5m])) > 0.2
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: fraud scorer p99 latency above 200ms

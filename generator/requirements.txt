@@ -1,0 +1,4 @@
+faker
+numpy
+psycopg[binary]
+confluent-kafka

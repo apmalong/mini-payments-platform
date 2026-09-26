@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: merchants
+      - name: customers
+      - name: transactions
+        loaded_at_field: updated_at
+        freshness:
+          warn_after: {count: 15, period: minute}
+          error_after: {count: 60, period: minute}
+      - name: refunds
+      - name: chargebacks

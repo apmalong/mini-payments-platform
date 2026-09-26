@@ -1,0 +1,6 @@
+version: 2
+
+# TODO(Module 3): fct_transactions (incremental merge, partition_by transaction_date,
+# cluster_by merchant_id), dim_merchants (from snapshot), mart_merchant_daily_volume.
+# TODO(Module 5): contract: {enforced: true} on each mart.
+models: []

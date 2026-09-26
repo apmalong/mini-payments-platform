@@ -1,0 +1,16 @@
+# Module 10A: AI gateway. Add virtual keys, budgets and a PII-redaction guardrail.
+model_list:
+  - model_name: default
+    litellm_params:
+      model: anthropic/claude-sonnet-5
+      api_key: os.environ/ANTHROPIC_API_KEY
+  - model_name: local
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: http://host.docker.internal:11434
+
+router_settings:
+  fallbacks: [{default: [local]}]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

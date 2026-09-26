@@ -1,0 +1,12 @@
+# Module 5: contract for the raw transactions feed. CI fails on breaking changes.
+dataset: raw.transactions
+owner: data-platform
+columns:
+  - {name: transaction_id, type: varchar, required: true, unique: true}
+  - {name: merchant_id, type: varchar, required: true}
+  - {name: card_token, type: varchar, required: true, pii: false}   # tokenized, never raw PAN
+  - {name: customer_email, type: varchar, pii: true}
+  - {name: amount, type: decimal(18,2), required: true}
+  - {name: currency, type: varchar, required: true}
+  - {name: raw_payload, type: json}
+  - {name: updated_at, type: timestamp, required: true}

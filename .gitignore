@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.duckdb
+*.duckdb.wal
+warehouse/dbt/target/
+warehouse/dbt/dbt_packages/
+warehouse/dbt/logs/
+mlruns/
+mlflow.db
+.pytest_cache/
+.ruff_cache/

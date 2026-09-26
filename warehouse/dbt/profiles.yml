@@ -1,0 +1,14 @@
+payments:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: ../../warehouse.duckdb
+      threads: 4
+    bigquery:            # Module 3 portability demo (BigQuery sandbox)
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT', 'your-sandbox-project') }}"
+      dataset: payments
+      location: US
+      threads: 4

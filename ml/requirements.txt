@@ -1,0 +1,10 @@
+mlflow
+lightgbm
+scikit-learn
+pandas
+duckdb
+feast[redis]
+evidently
+fastapi
+uvicorn
+prometheus-client

@@ -1,0 +1,79 @@
+# Services grouped by profile so each module only starts what it needs.
+# Airflow runs from its own compose file: see orchestration/README.md.
+services:
+  postgres:
+    image: postgres:16
+    profiles: [core]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports: ["${POSTGRES_PORT:-5433}:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    profiles: [streaming]
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://localhost:9092
+      - --schema-registry-addr=0.0.0.0:8081
+    ports: ["9092:9092", "8081:8081"]
+
+  redis:
+    image: redis:7
+    profiles: [streaming, ml]
+    ports: ["6379:6379"]
+
+  minio:
+    image: minio/minio:latest
+    profiles: [ml]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    profiles: [ml]
+    # TODO(Module 7): switch backend to Postgres and artifacts to MinIO (s3://mlflow).
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --artifacts-destination /mlflow/artifacts
+    ports: ["5000:5000"]
+    volumes: [mlflowdata:/mlflow]
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    profiles: [gateway]
+    command: --config /app/config.yaml --port 4000
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+    volumes: [./gateway/litellm_config.yaml:/app/config.yaml:ro]
+    ports: ["4000:4000"]
+
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: [obs]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: [obs]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes: [./observability/grafana/dashboards:/var/lib/grafana/dashboards]
+    ports: ["3000:3000"]
+
+volumes:
+  pgdata:
+  miniodata:
+  mlflowdata:
