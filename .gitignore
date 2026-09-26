@@ -11,3 +11,6 @@ mlruns/
 mlflow.db
 .pytest_cache/
 .ruff_cache/
+.airbyte-tmp/
+ingestion/source-postgres/
+orchestration/logs/

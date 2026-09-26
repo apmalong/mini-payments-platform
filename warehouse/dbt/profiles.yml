@@ -3,7 +3,7 @@ payments:
   outputs:
     duckdb:
       type: duckdb
-      path: ../../warehouse.duckdb   # relative to warehouse/dbt, where dbt is run
+      path: "{{ env_var('DUCKDB_PATH', '../../warehouse.duckdb') }}"   # default is relative to warehouse/dbt
       schema: analytics
       threads: 4
       settings:

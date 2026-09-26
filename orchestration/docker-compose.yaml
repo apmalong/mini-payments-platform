@@ -1,0 +1,24 @@
+# Single-container Airflow for local demos: `airflow standalone` runs the API server, scheduler,
+# DAG processor and triggerer together with the LocalExecutor. Metadata lives in the project's
+# Postgres (database `airflow`). Run from this folder: docker compose --env-file ../.env up -d
+services:
+  airflow:
+    build: .
+    image: mpp-airflow:local
+    container_name: mpp-airflow
+    command: standalone
+    ports: ["8088:8080"]            # 8080 on the host is taken by a local Apache
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@host.docker.internal:${POSTGRES_PORT}/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"   # no login locally
+      AIRFLOW__CORE__DAGS_FOLDER: ${HOST_PROJECT_PATH}/orchestration/dags
+      PROJECT_DIR: ${HOST_PROJECT_PATH}
+      DUCKDB_PATH: ${HOST_PROJECT_PATH}/warehouse.duckdb
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+      DO_NOT_TRACK: "1"
+    volumes:
+      # Mounted at the path Docker's VM uses for it, so sibling containers can bind-mount it too.
+      - ..:${HOST_PROJECT_PATH}
+      - //var/run/docker.sock:/var/run/docker.sock   # leading // stops Windows path conversion

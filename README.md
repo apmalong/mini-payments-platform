@@ -85,6 +85,12 @@ dispatched so the same SQL runs on both.
 Expected warnings: 501+ duplicate `transaction_id`s in `raw` (client retries, removed in staging),
 and a few transactions refunded above their amount (generator bug the test is there to catch).
 
+## Module 4: Airflow
+
+`payments_pipeline` runs ingest → dbt (one task per model, tests after each) → publish every
+15 minutes, in a single `airflow standalone` container. UI at http://localhost:8088.
+Setup and the Windows-specific details are in [orchestration/README.md](orchestration/README.md).
+
 ## Quick start (all services)
 
 Needs a current Docker Compose. Compose 2.0.0-beta ignores `profiles:` and tries to start everything.
