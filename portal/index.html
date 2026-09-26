@@ -53,6 +53,42 @@
   .planned { opacity: 0.6; }
   .tag { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); }
   footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
+
+  .tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--line); }
+  .tabs a { padding: 8px 14px; color: var(--muted); text-decoration: none; font-weight: 600;
+            border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs a:hover { color: var(--ink); }
+  .tabs a.active { color: var(--ink); border-bottom-color: var(--accent); }
+
+  .docs { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 28px; margin-top: 20px; }
+  @media (max-width: 760px) { .docs { grid-template-columns: 1fr; } }
+  .doclist h2 { margin: 18px 0 6px; }
+  .doclist a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--ink); text-decoration: none;
+               font-size: 13px; }
+  .doclist a:hover { background: var(--code); }
+  .doclist a.active { background: var(--panel); border: 1px solid var(--line); }
+
+  .doc { margin-top: 20px; min-width: 0; max-width: 900px; line-height: 1.6; }
+  .doc h1 { font-size: 22px; margin: 0 0 8px; }
+  .doc h2 { font-size: 17px; text-transform: none; letter-spacing: 0; color: var(--ink); margin: 32px 0 8px; }
+  .doc h3 { font-size: 15px; margin: 22px 0 6px; }
+  .doc a { color: var(--accent); }
+  .doc code { background: var(--code); border-radius: 4px; padding: 1px 5px; }
+  .doc pre { background: var(--code); border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+  .doc pre code { padding: 0; background: none; }
+  .doc table { border-collapse: collapse; display: block; overflow-x: auto; margin: 12px 0; font-size: 13px; }
+  .doc th, .doc td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+  .doc th { background: var(--panel); }
+  .doc .mermaid { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+                  margin: 14px 0; overflow-x: auto; text-align: center; }
+  .doc .mermaid { cursor: zoom-in; position: relative; }
+  .doc .mermaid svg { max-width: 100%; height: auto; }            /* fit the page by default */
+  .doc .mermaid.zoomed { cursor: zoom-out; }
+  .doc .mermaid.zoomed svg { max-width: none; }                    /* click: full size, scroll */
+  .doc .mermaid::after { content: "click to enlarge"; position: absolute; right: 12px; bottom: 8px;
+                         font-size: 11px; color: var(--muted); }
+  .doc .mermaid.zoomed::after { content: "click to fit"; }
+  .doc.wide { max-width: none; }
 </style>
 </head>
 <body>
@@ -61,6 +97,8 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+<script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
+<script src="https://unpkg.com/mermaid@11.4.1/dist/mermaid.min.js"></script>
 <script>
 const { useEffect, useState } = React;
 const html = htm.bind(React.createElement);
@@ -193,10 +231,104 @@ function ServiceCard({ service, status, planned }) {
     </div>`;
 }
 
+// ---------- docs (served read-only from docs/ by portal/serve.py) ----------
+
+const DARK = window.matchMedia("(prefers-color-scheme: dark)").matches;
+// Mermaid measures label text to size boxes; give it the page's font or titles overflow.
+const PAGE_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+mermaid.initialize({
+  startOnLoad: false, securityLevel: "strict", theme: DARK ? "dark" : "neutral",
+  fontFamily: PAGE_FONT, themeVariables: { fontFamily: PAGE_FONT, fontSize: "14px" },
+});
+
+function resolvePath(base, href) {
+  const parts = base.split("/").slice(0, -1);
+  for (const part of href.split("/")) {
+    if (part === "..") parts.pop(); else if (part !== ".") parts.push(part);
+  }
+  return parts.join("/");
+}
+
+// Render a docs/ Markdown file: internal .md links stay in the portal, links to code files
+// (which the server doesn't serve) become plain paths, and mermaid blocks become diagrams.
+function DocView({ path, wide = false }) {
+  const [state, setState] = useState({ status: "loading", html: "" });
+  const ref = React.useRef(null);
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading", html: "" });
+    fetch(`/docs/${path}`)
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+      .then(md => !cancelled && setState({ status: "ok", html: marked.parse(md) }))
+      .catch(e => !cancelled && setState({ status: "error", html: String(e) }));
+    return () => { cancelled = true; };
+  }, [path]);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || state.status !== "ok") return;
+    root.querySelectorAll("a[href]").forEach(a => {
+      const href = a.getAttribute("href");
+      if (/^https?:/.test(href)) { a.target = "_blank"; a.rel = "noopener"; return; }
+      if (href.startsWith("#")) return;
+      const [file] = href.split("#");
+      if (file.endsWith(".md")) { a.setAttribute("href", `#docs/${resolvePath(path, file)}`); return; }
+      const code = document.createElement("code");
+      code.textContent = a.textContent;
+      code.title = `In the repository: ${resolvePath("docs/" + path, file)}`;
+      a.replaceWith(code);
+    });
+    const blocks = [...root.querySelectorAll("pre > code.language-mermaid")].map(code => {
+      const div = document.createElement("div");
+      div.className = "mermaid";
+      div.textContent = code.textContent;
+      code.parentElement.replaceWith(div);
+      return div;
+    });
+    blocks.forEach(div => div.addEventListener("click", () => div.classList.toggle("zoomed")));
+    if (blocks.length) mermaid.run({ nodes: blocks }).catch(e => console.error("mermaid", e));
+    window.scrollTo(0, 0);
+  }, [state]);
+  if (state.status === "loading") return html`<p class="desc">Loading ${path}…</p>`;
+  if (state.status === "error") return html`<p class="desc">Couldn't load docs/${path} (${state.html}). Is the portal running through <code>portal/serve.py</code>?</p>`;
+  return html`<article class=${"doc" + (wide ? " wide" : "")} ref=${ref} dangerouslySetInnerHTML=${{ __html: state.html }}></article>`;
+}
+
+function DocsView({ path }) {
+  const [index, setIndex] = useState([]);
+  useEffect(() => { fetch("/docs/index.json").then(r => r.json()).then(setIndex).catch(() => setIndex([])); }, []);
+  const groups = [...new Set(index.map(d => d.group))];
+  const current = path || "governance.md";
+  return html`
+    <div class="docs">
+      <nav class="doclist">
+        ${groups.map(g => html`
+          <div key=${g}>
+            <h2>${g}</h2>
+            ${index.filter(d => d.group === g).map(d => html`
+              <a key=${d.path} href=${"#docs/" + d.path} class=${d.path === current ? "active" : ""}>${d.title}</a>`)}
+          </div>`)}
+      </nav>
+      <${DocView} path=${current} />
+    </div>`;
+}
+
+function useRoute() {
+  const read = () => window.location.hash.replace(/^#/, "") || "services";
+  const [route, setRoute] = useState(read);
+  useEffect(() => {
+    const onChange = () => setRoute(read());
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+  return route;
+}
+
 function App() {
+  const route = useRoute();
   const [statuses, checkedAt] = useStatuses();
   const checked = Object.values(statuses);
   const up = checked.filter(s => s === "up").length;
+  const tab = route.startsWith("docs") ? "docs" : route === "architecture" ? "architecture" : "services";
   return html`
     <main>
       <header>
@@ -205,6 +337,20 @@ function App() {
           ${checkedAt ? html`<b>${up}</b> of ${checked.length} web services up · checked ${checkedAt.toLocaleTimeString()}` : "checking services…"}
         </span>
       </header>
+      <nav class="tabs">
+        <a href="#services" class=${tab === "services" ? "active" : ""}>Services</a>
+        <a href="#architecture" class=${tab === "architecture" ? "active" : ""}>Architecture</a>
+        <a href="#docs" class=${tab === "docs" ? "active" : ""}>Docs</a>
+      </nav>
+      ${tab === "architecture" && html`<${DocView} path="architecture.md" wide=${true} />`}
+      ${tab === "docs" && html`<${DocsView} path=${route.replace(/^docs\/?/, "")} />`}
+      ${tab === "services" && html`<${ServicesView} statuses=${statuses} />`}
+    </main>`;
+}
+
+function ServicesView({ statuses }) {
+  return html`
+    <div>
       ${GROUPS.map(group => html`
         <section key=${group.title}>
           <h2>${group.title}</h2>
@@ -226,10 +372,11 @@ function App() {
       </section>
       <footer>
         Status checks run every 15 s from this page. Serve it with
-        <code>uv run python -m http.server 8099 -d portal</code> from the project folder and open
-        http://localhost:8099, so the browser allows the checks.
+        <code>uv run python portal/serve.py</code> from the project folder and open
+        http://localhost:8099: the browser allows the checks, and the Architecture and Docs tabs
+        read docs/ through it.
       </footer>
-    </main>`;
+    </div>`;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
