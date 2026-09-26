@@ -15,3 +15,4 @@ mlflow.db
 ingestion/source-postgres/
 orchestration/logs/
 streaming/offline/
+backups/

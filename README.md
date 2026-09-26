@@ -25,7 +25,7 @@ data platform (ingest → model → orchestrate → govern → stream → ML →
 Postgres runs on host port **5433**, because a local PostgreSQL 13 service already uses 5432.
 
 ```powershell
-# start Postgres (plain docker run: the installed Compose 2.0 beta ignores profiles)
+# start Postgres (or: docker compose --env-file .env --profile core up -d)
 docker run -d --name mpp-postgres -e POSTGRES_USER=payments -e POSTGRES_PASSWORD=payments `
   -e POSTGRES_DB=payments -p 5433:5432 -v mpp_pgdata:/var/lib/postgresql/data postgres:16
 
@@ -137,7 +137,7 @@ each Parquet flush to `streaming/offline/transaction_features/`.
 
 ## Quick start (all services)
 
-Needs a current Docker Compose. Compose 2.0.0-beta ignores `profiles:` and tries to start everything.
+Needs Docker Desktop 4.x (Compose v2 with profile support); tested with 4.91 / Engine 29.8.
 
 ```bash
 cp .env.example .env
