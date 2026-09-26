@@ -3,6 +3,14 @@
 Local capstone project for the lesson plan in `../lesson-plan.md`: a small fictional card-payments
 data platform (ingest → model → orchestrate → govern → stream → ML → AI gateway).
 
+## Portal
+
+Every local UI, with live up/down status and start commands:
+
+```powershell
+uv run python -m http.server 8099 --bind 127.0.0.1 -d portal   # then open http://localhost:8099
+```
+
 ## Layout
 
 | Folder | Module | Purpose |
