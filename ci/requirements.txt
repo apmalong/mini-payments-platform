@@ -1,0 +1,12 @@
+# Everything CI runs: tests, lint, the source fixture, dbt and the governance checks.
+pytest
+ruff
+dbt-core==1.12.5
+dbt-duckdb==1.11.0
+duckdb==1.4.3
+sqlglot==30.19.0
+pyyaml
+psycopg[binary]
+prometheus-client
+faker
+numpy

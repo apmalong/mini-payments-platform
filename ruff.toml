@@ -1,0 +1,10 @@
+line-length = 120
+target-version = "py312"
+extend-exclude = ["**/.venv", "warehouse/dbt/dbt_packages", "warehouse/dbt/target"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]   # long SQL strings and URLs read better unwrapped
+
+[lint.isort]
+known-first-party = ["features", "warehouse_tools", "consumer", "pii_guardrail", "check_contracts", "exporter"]

@@ -2,7 +2,7 @@
 
 A local payments data platform: a synthetic card-payments source, batch ELT into a warehouse,
 real-time fraud features and scoring, governance controls, MLOps, Kubernetes and observability.
-Each section is one view; the [ADRs](adr/) record why it's built this way.
+Each section is one view; the [ADRs](adr/README.md) record why it's built this way.
 
 ## 1. System overview
 

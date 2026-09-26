@@ -118,7 +118,7 @@ def check_drift(reference: dict, window_minutes: int) -> None:
             return
         for feature, (edges, expected) in reference.items():
             actual = bucket_shares(conn, f"select coalesce(cast({feature} as double), -1) as v from ({recent})", edges)
-            psi = sum((a - e) * math.log((a + 1e-4) / (e + 1e-4)) for a, e in zip(actual, expected))
+            psi = sum((a - e) * math.log((a + 1e-4) / (e + 1e-4)) for a, e in zip(actual, expected, strict=True))
             PSI.labels(feature).set(round(psi, 4))
         CHECK_OK.labels("drift").set(1)
     except duckdb.Error:

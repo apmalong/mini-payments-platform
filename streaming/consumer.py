@@ -30,7 +30,7 @@ import signal
 import time
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pyarrow as pa
@@ -154,12 +154,12 @@ class FeatureStream:
             "transaction_id": event["transaction_id"],
             "card_token": event["card_token"],
             "merchant_id": event["merchant_id"],
-            "event_time": datetime.fromtimestamp(event_ts, timezone.utc),
+            "event_time": datetime.fromtimestamp(event_ts, UTC),
             "amount": float(event["amount"]),
             "currency": event["currency"],
             "entry_mode": event["entry_mode"],
             "is_late": is_late,
-            "processed_at": datetime.now(timezone.utc),
+            "processed_at": datetime.now(UTC),
         }
         if is_late:
             EVENTS.labels("late").inc()

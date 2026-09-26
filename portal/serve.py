@@ -25,9 +25,10 @@ def doc_index() -> list[dict]:
         relative = path.relative_to(DOCS).as_posix()
         first_heading = next((line.lstrip("# ").strip() for line in path.read_text(encoding="utf-8").splitlines()
                               if line.startswith("# ")), path.stem)
-        docs.append({"path": relative, "title": first_heading,
+        docs.append({"path": relative, "title": first_heading.replace("`", ""),
                      "group": GROUPS.get(path.parent.relative_to(DOCS).as_posix().replace(".", ""), "Reference")})
-    return docs
+    # A folder's README (its index) comes first in its group.
+    return sorted(docs, key=lambda d: (d["group"], not d["path"].endswith("README.md"), d["path"]))
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):

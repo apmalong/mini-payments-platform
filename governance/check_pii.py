@@ -24,7 +24,8 @@ from sqlglot.lineage import lineage
 
 ROOT = Path(__file__).resolve().parent.parent
 DBT_DIR = ROOT / "warehouse" / "dbt"
-MANIFEST = DBT_DIR / "target" / "manifest.json"
+# dbt honours DBT_TARGET_PATH; CI sets it so it never overwrites the working manifest.
+MANIFEST = Path(os.environ.get("DBT_TARGET_PATH", DBT_DIR / "target")) / "manifest.json"
 POLICY = Path(__file__).resolve().parent / "pii_policy.yml"
 MASKING_FUNCTIONS = (exp.MD5, exp.SHA, exp.SHA2)
 

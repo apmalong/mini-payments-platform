@@ -123,7 +123,7 @@ def score(event: dict) -> dict:
     try:
         row = features.flatten_event(event)
     except KeyError as missing:
-        raise HTTPException(422, f"missing field {missing}")
+        raise HTTPException(422, f"missing field {missing}") from missing
 
     if event.get("features"):
         row.update(event["features"])

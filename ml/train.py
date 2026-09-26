@@ -110,7 +110,7 @@ def main() -> None:
                            "train_fraud": int(y_train.sum()), "valid_rows": len(valid),
                            "valid_fraud": int(y_valid.sum())})
         mlflow.log_metrics({f"val_{k}": v for k, v in metrics.items()})
-        importance = dict(zip(features.FEATURES, model.booster_.feature_importance("gain").round(1)))
+        importance = dict(zip(features.FEATURES, model.booster_.feature_importance("gain").round(1), strict=True))
         mlflow.log_dict(importance, "feature_importance.json")
         info = mlflow.lightgbm.log_model(
             model, name="model", input_example=X_valid.head(3), registered_model_name=MODEL_NAME)

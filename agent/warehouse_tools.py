@@ -27,7 +27,7 @@ def connect() -> duckdb.DuckDBPyConnection:
     try:
         conn = duckdb.connect(DUCKDB_PATH, read_only=True)
     except duckdb.Error as error:
-        raise QueryRejected(f"warehouse is busy (the pipeline may be writing); retry shortly: {error}")
+        raise QueryRejected(f"warehouse is busy (the pipeline may be writing); retry shortly: {error}") from error
     conn.execute("set TimeZone = 'UTC'")
     return conn
 
@@ -52,7 +52,7 @@ def check(sql: str) -> exp.Expression:
     try:
         statements = [s for s in sqlglot.parse(sql, dialect="duckdb") if s is not None]
     except sqlglot.errors.ParseError as error:
-        raise QueryRejected(f"could not parse the SQL: {error}")
+        raise QueryRejected(f"could not parse the SQL: {error}") from error
     if len(statements) != 1:
         raise QueryRejected("send exactly one statement")
     statement = statements[0]
@@ -83,7 +83,7 @@ def run(sql: str) -> tuple[list[str], list[tuple]]:
         columns = [d[0] for d in cursor.description]
         rows = cursor.fetchmany(MAX_ROWS)
     except duckdb.Error as error:
-        raise QueryRejected(f"query failed: {error}")
+        raise QueryRejected(f"query failed: {error}") from error
     finally:
         conn.close()
     return columns, rows
