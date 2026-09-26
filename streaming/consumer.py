@@ -28,6 +28,7 @@ import json
 import os
 import signal
 import time
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,11 +41,16 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 TOPIC = "payments.transactions"
 OFFLINE_DIR = Path(__file__).resolve().parent / "offline" / "transaction_features"
-STATE_TTL_SECONDS = 24 * 3600
+# Card and merchant state must outlive the gaps between a card's transactions, or online features
+# (time since last transaction, new IP country, merchant stats) drift from the offline ones,
+# which see the full history. 90 days matches the warehouse history.
+STATE_TTL_SECONDS = 90 * 24 * 3600
+DEDUPE_TTL_SECONDS = 24 * 3600
 
 EVENTS = Counter("stream_events_total", "Events consumed", ["outcome"])  # processed | duplicate | late | invalid
 REQUIRED_FIELDS = ("transaction_id", "card_token", "merchant_id", "amount", "currency", "entry_mode", "created_at")
 LAG = Gauge("stream_consumer_lag", "Messages behind the end of the topic", ["partition"])
+SCORED = Counter("stream_scored_total", "Events scored", ["decision"])  # approve | review | error
 LATENCY = Histogram("stream_event_latency_seconds", "Event time to feature availability",
                     buckets=(0.1, 0.5, 1, 2, 5, 10, 30, 60, 300))
 WATERMARK = Gauge("stream_watermark_seconds", "Newest event time seen (unix seconds)")
@@ -94,8 +100,10 @@ if last == false or ts > tonumber(last) then
     redis.call('HSET', KEYS[5], 'last_txn_ts', ts)
 end
 redis.call('HSET', KEYS[5], 'txn_count_5m', count_5m, 'amount_sum_1h', sum_1h,
-           'is_new_ip_country', new_country, 'merchant_amount_zscore', zscore, 'updated_at', ts)
-for i = 2, 5 do redis.call('EXPIRE', KEYS[i], ttl) end
+           'seconds_since_last_txn', since_last, 'is_new_ip_country', new_country,
+           'merchant_amount_zscore', zscore, 'updated_at', ts)
+redis.call('EXPIRE', KEYS[2], 3600)  -- the window only needs the last hour
+for i = 3, 5 do redis.call('EXPIRE', KEYS[i], ttl) end
 
 return {1, count_5m, tostring(sum_1h), tostring(since_last), new_country, tostring(zscore)}
 """
@@ -116,9 +124,11 @@ def parse_time(value: str) -> float:
 
 
 class FeatureStream:
-    def __init__(self, r: redis.Redis, allowed_lateness: float):
+    def __init__(self, r: redis.Redis, allowed_lateness: float, score_url: str | None = None):
         self.update = r.register_script(UPDATE_FEATURES)
         self.allowed_lateness = allowed_lateness
+        self.score_url = score_url
+        self.score_errors = 0
         self.watermark = 0.0
         self.buffer: list[dict] = []
 
@@ -134,7 +144,7 @@ class FeatureStream:
             float(event["amount"])
         except (ValueError, TypeError, AttributeError) as error:
             EVENTS.labels("invalid").inc()
-            print(f"skipping invalid event: {error}: {raw[:120]!r}")
+            print(f"skipping invalid event: {error}: {raw[:120]!r}", flush=True)
             return
         is_late = event_ts < self.watermark - self.allowed_lateness
         self.watermark = max(self.watermark, event_ts)
@@ -159,7 +169,7 @@ class FeatureStream:
                 keys=[f"seen:{event['transaction_id']}", f"card:{card}:window", f"card:{card}:ip_countries",
                       f"merchant:{merchant}:amount_stats", f"features:card:{card}"],
                 args=[event["transaction_id"], event_ts, row["amount"], event.get("ip_country") or "",
-                      STATE_TTL_SECONDS, STATE_TTL_SECONDS])
+                      DEDUPE_TTL_SECONDS, STATE_TTL_SECONDS])
             if result[0] == 0:
                 EVENTS.labels("duplicate").inc()
                 return
@@ -172,7 +182,27 @@ class FeatureStream:
             })
             EVENTS.labels("processed").inc()
             LATENCY.observe(max(0.0, time.time() - event_ts))
+            if self.score_url:
+                row.update(self.score(event, row))
         self.buffer.append(row)
+
+    def score(self, event: dict, row: dict) -> dict:
+        """Ask the scoring service, passing the features just computed (no Redis race).
+        Fails open: a scoring outage must not stop feature computation."""
+        body = {**event, "features": {name: row[name] for name in WINDOWED_FEATURES}}
+        request = urllib.request.Request(self.score_url, data=json.dumps(body, default=str).encode(),
+                                         headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=2) as response:
+                result = json.loads(response.read())
+            SCORED.labels(result["decision"]).inc()
+            return {"fraud_score": result["fraud_score"], "model_version": str(result["model_version"])}
+        except (OSError, ValueError, KeyError) as error:
+            SCORED.labels("error").inc()
+            self.score_errors += 1
+            if self.score_errors <= 3:  # don't flood the log during an outage
+                print(f"scoring failed (continuing without a score): {error}", flush=True)
+            return {}
 
     def flush(self) -> int:
         if not self.buffer:
@@ -194,7 +224,10 @@ OFFLINE_SCHEMA = pa.schema([
     ("card_txn_count_5m", pa.int64()), ("card_amount_sum_1h", pa.float64()),
     ("seconds_since_last_card_txn", pa.float64()), ("is_new_ip_country", pa.bool_()),
     ("merchant_amount_zscore", pa.float64()),
+    ("fraud_score", pa.float64()), ("model_version", pa.string()),
 ])
+WINDOWED_FEATURES = ["card_txn_count_5m", "card_amount_sum_1h", "seconds_since_last_card_txn",
+                     "is_new_ip_country", "merchant_amount_zscore"]
 
 
 def update_lag(consumer: Consumer) -> None:
@@ -211,6 +244,7 @@ def main() -> None:
     parser.add_argument("--allowed-lateness", type=float, default=600, help="seconds")
     parser.add_argument("--flush-every", type=float, default=10, help="seconds between Parquet flushes/commits")
     parser.add_argument("--metrics-port", type=int, default=8000)
+    parser.add_argument("--score-url", help="fraud scoring service, e.g. http://127.0.0.1:8090/score (not localhost: on Windows that tries IPv6 first and stalls ~2s per request)")
     args = parser.parse_args()
 
     load_env()
@@ -225,7 +259,7 @@ def main() -> None:
     })
     consumer.subscribe([TOPIC])
     start_http_server(args.metrics_port)
-    stream = FeatureStream(r, args.allowed_lateness)
+    stream = FeatureStream(r, args.allowed_lateness, args.score_url)
 
     stopping = False
 

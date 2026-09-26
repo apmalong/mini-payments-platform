@@ -37,21 +37,22 @@ services:
     profiles: [streaming, ml]
     ports: ["6379:6379"]
 
-  minio:
-    image: minio/minio:latest
-    profiles: [ml]
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports: ["9000:9000", "9001:9001"]
-    volumes: [miniodata:/data]
+  redisinsight:
+    image: redis/redisinsight:latest
+    profiles: [streaming, ml]
+    ports: ["5540:5540"]   # add database: host redis, port 6379
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     profiles: [ml]
-    # TODO(Module 7): switch backend to Postgres and artifacts to MinIO (s3://mlflow).
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlflow/mlflow.db --artifacts-destination /mlflow/artifacts
+    # Artifacts are proxied by the server (--serve-artifacts), so clients need no shared disk or S3.
+    # --allowed-hosts: MLflow 3 rejects unknown Host headers (DNS-rebinding protection);
+    # host.docker.internal is how the Airflow container reaches it.
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts --serve-artifacts
+      --allowed-hosts localhost,localhost:5000,127.0.0.1,127.0.0.1:5000,host.docker.internal,host.docker.internal:5000,mlflow,mlflow:5000
     ports: ["5000:5000"]
     volumes: [mlflowdata:/mlflow]
 
@@ -83,5 +84,4 @@ services:
 
 volumes:
   pgdata:
-  miniodata:
   mlflowdata:

@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: ml_transaction_features
+    description: >
+      Point-in-time fraud features per transaction, matching the online features computed by
+      streaming/consumer.py, plus the chargeback-derived label. Train only on rows with
+      label_mature = true and is_approved = true (declined transactions never get chargebacks).
+    config:
+      materialized: table
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+      - name: card_txn_count_5m
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 1}

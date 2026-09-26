@@ -1,10 +1,9 @@
-mlflow
+mlflow==3.16.1
 lightgbm
 scikit-learn
 pandas
-duckdb
-feast[redis]
-evidently
+duckdb==1.4.3
 fastapi
 uvicorn
+redis
 prometheus-client

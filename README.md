@@ -135,6 +135,33 @@ and merchant amount z-score in one atomic Redis Lua script, routes events more t
 the watermark to the offline store only, skips malformed events, and commits Kafka offsets only after
 each Parquet flush to `streaming/offline/transaction_features/`.
 
+## Module 7: MLOps
+
+MLflow at http://localhost:5000 (`docker compose --env-file .env --profile ml up -d`, or see the
+compose file for the `--allowed-hosts` it needs). Artifacts are proxied by MLflow, so no S3/MinIO.
+
+```powershell
+cd warehouse\dbt; uv run dbt build --profiles-dir . --select +ml_transaction_features   # training features
+cd ml; uv run python train.py                        # train, log, register; promote if it beats champion
+cd ml\serve; ..\.venv\Scripts\python -m uvicorn app:app --port 8090   # serves fraud@champion
+cd streaming; uv run python bootstrap_online_store.py --reset          # load Redis from the warehouse
+cd streaming; uv run python consumer.py --score-url http://127.0.0.1:8090/score
+cd ml; uv run python check_skew.py --since 2026-09-26T21:00:00   # online vs offline features
+```
+
+- **One feature definition, two computations.** `ml/features.py` derives payload features for
+  both training and serving; windowed features come from dbt (`ml_transaction_features`,
+  point-in-time) offline and from the consumer's Lua script online. `check_skew.py` compares them.
+- **Cold start is skew.** Without `bootstrap_online_store.py`, online merchant z-scores matched
+  offline 1.4% of the time; with it, 85%.
+- **Promotion is the deploy.** `train.py` registers each model as `challenger` and moves `champion`
+  only if PR-AUC beats the current champion on the same validation set and p99 latency is under
+  20 ms. The scorer polls the alias every 30 s and swaps models without a restart.
+- **Retraining**: the `fraud_model_training` DAG runs on the `fct_transactions` asset and skips
+  when the mature training set (labels older than 45 days) hasn't changed.
+- Use `127.0.0.1`, not `localhost`, for the scorer URL: on Windows `localhost` tries IPv6 first
+  and each request stalls ~2 s.
+
 ## Quick start (all services)
 
 Needs Docker Desktop 4.x (Compose v2 with profile support); tested with 4.91 / Engine 29.8.

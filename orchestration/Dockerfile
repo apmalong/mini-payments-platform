@@ -14,5 +14,12 @@ RUN pip install --no-cache-dir "apache-airflow==3.3.2" "astronomer-cosmos==1.15.
 RUN python -m venv /opt/airflow/venvs/dbt \
  && /opt/airflow/venvs/dbt/bin/pip install --no-cache-dir "dbt-core==1.12.5" "dbt-duckdb==1.11.0" "duckdb==1.4.3" \
       "sqlglot==30.19.0" pyyaml
+RUN python -m venv /opt/airflow/venvs/ml \
+ && /opt/airflow/venvs/ml/bin/pip install --no-cache-dir "mlflow==3.16.1" lightgbm scikit-learn pandas "duckdb==1.4.3"
 RUN python -m venv /opt/airflow/venvs/ingest \
  && /opt/airflow/venvs/ingest/bin/pip install --no-cache-dir "airbyte==0.71.0" "duckdb==1.4.3"
+
+# LightGBM needs OpenMP at runtime. Last layer, so changing it doesn't rebuild the virtualenvs.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+USER airflow
