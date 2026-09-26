@@ -109,6 +109,32 @@ cd warehouse\dbt; uv run dbt run-operation create_role_views --profiles-dir .
 - **Role views**: `role_analyst` / `role_fraud_ops` schemas, filtered by column classification.
 - **Volume anomaly test**: last complete day vs a 14-day baseline.
 
+## Module 6: streaming
+
+Redpanda (Kafka API), Redis (online features) and Redpanda Console, on a shared `mpp` network:
+
+```powershell
+docker network create mpp
+docker run -d --name mpp-redpanda --network mpp -p 9092:9092 -p 18081:8081 -p 9644:9644 redpandadata/redpanda:latest `
+  redpanda start --mode dev-container --smp 1 `
+  --kafka-addr internal://0.0.0.0:29092,external://0.0.0.0:9092 `
+  --advertise-kafka-addr internal://mpp-redpanda:29092,external://localhost:9092 `
+  --schema-registry-addr 0.0.0.0:8081
+docker run -d --name mpp-redis --network mpp -p 6379:6379 redis:7
+docker run -d --name mpp-redpanda-console --network mpp -p 8085:8080 -e KAFKA_BROKERS=mpp-redpanda:29092 redpandadata/console:latest
+docker exec mpp-redpanda rpk topic create payments.transactions -p 3   # keyed by card_token
+
+cd streaming; uv run python consumer.py            # features -> Redis + Parquet, metrics on :8000
+cd generator; uv run python generate.py --continuous --stream
+```
+
+Console: http://localhost:8085. Features for a card: `docker exec mpp-redis redis-cli hgetall features:card:<card_token>`.
+
+The consumer dedupes retries, updates card windows (count 5m, sum 1h, time since last), new-IP-country
+and merchant amount z-score in one atomic Redis Lua script, routes events more than 10 minutes behind
+the watermark to the offline store only, skips malformed events, and commits Kafka offsets only after
+each Parquet flush to `streaming/offline/transaction_features/`.
+
 ## Quick start (all services)
 
 Needs a current Docker Compose. Compose 2.0.0-beta ignores `profiles:` and tries to start everything.

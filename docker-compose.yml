@@ -19,10 +19,18 @@ services:
       - start
       - --mode=dev-container
       - --smp=1
-      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
-      - --advertise-kafka-addr=PLAINTEXT://localhost:9092
+      # internal listener for other containers (console), external for host clients
+      - --kafka-addr=internal://0.0.0.0:29092,external://0.0.0.0:9092
+      - --advertise-kafka-addr=internal://redpanda:29092,external://localhost:9092
       - --schema-registry-addr=0.0.0.0:8081
-    ports: ["9092:9092", "8081:8081"]
+    ports: ["9092:9092", "18081:8081", "9644:9644"]   # 8081 is used by dbt docs
+
+  redpanda-console:
+    image: redpandadata/console:latest
+    profiles: [streaming]
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports: ["8085:8080"]   # 8082 is reserved by Windows
 
   redis:
     image: redis:7

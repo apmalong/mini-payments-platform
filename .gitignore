@@ -14,3 +14,4 @@ mlflow.db
 .airbyte-tmp/
 ingestion/source-postgres/
 orchestration/logs/
+streaming/offline/
