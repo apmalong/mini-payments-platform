@@ -8,7 +8,7 @@ data platform (ingest → model → orchestrate → govern → stream → ML →
 Every local UI, with live up/down status and start commands:
 
 ```powershell
-uv run python -m http.server 8099 --bind 127.0.0.1 -d portal   # then open http://localhost:8099
+uv run python portal/serve.py   # then open http://localhost:8099 (Services, Architecture, Docs)
 ```
 
 ## Layout
@@ -235,6 +235,37 @@ localhost:9090 to Prometheus's NodePort instead of recreating the cluster.
   mart fresh within 15 minutes 99% of the time.
 - **Drift** is the population stability index of each live feature against the training data,
   computed by the exporter (a lightweight stand-in for Evidently).
+
+## Module 10: AI gateway and agent tooling
+
+**Gateway** (LiteLLM, http://localhost:4000): every LLM call goes through it.
+
+```powershell
+docker compose --env-file .env --profile gateway up -d     # needs database "litellm" in Postgres
+uv run python gateway\setup_keys.py                        # per-team keys -> gateway\.keys.json
+cd agent; uv run python ask.py "Which categories had the most fraud?"   # needs ANTHROPIC_API_KEY
+cd agent; uv run python ask.py "..." --team local-test --mock-sql "select ..."   # no provider key
+```
+
+- Per-team virtual keys with budgets, rate limits and model allowlists; spend logs in Postgres.
+- `gateway/pii_guardrail.py` redacts emails, phone numbers and Luhn-valid card numbers from every
+  prompt before it leaves; the audit log stores only the redacted prompt.
+- Model fallback `default` (Sonnet) → `fast` (Haiku).
+- The gateway ignores client-supplied `mock_response` unless the key allows it
+  (`allow_client_mock_response`): only the `local-test` and `ratelimit-demo` keys do.
+- The rate limiter counts rejected requests, so a client retrying in a loop stays locked out:
+  back off on 429.
+
+**Agent access** (`agent/`): one guard, `warehouse_tools.py`, for everything an AI agent may read:
+a single SELECT over the `role_analyst` views (no PII), read-only, capped at 200 rows; writes,
+other schemas and file-reading functions are rejected.
+
+- **MCP server** (`agent/mcp_server.py`, registered in `.mcp.json`): `list_tables`,
+  `query_warehouse`, `model_lineage`, `data_freshness`, `active_alerts`, `read_runbook`. All
+  read-only and annotated as such. Open Claude Code in this folder to use it.
+- **Skills** (`.claude/skills/`): `new-dbt-source` adds a raw table the way this repo does it;
+  `investigate-alert` works an incident through the MCP tools and the runbooks.
+- **ask.py**: question → gateway → SQL → the same guard → results.
 
 ## Quick start (all services)
 

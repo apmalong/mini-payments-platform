@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "payments-platform": {
+      "command": "agent/.venv/Scripts/python.exe",
+      "args": ["agent/mcp_server.py"]
+    }
+  }
+}

@@ -59,11 +59,14 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     profiles: [gateway]
-    command: --config /app/config.yaml --port 4000
+    # gateway/ holds the config and the PII guardrail it loads (pii_guardrail.PiiRedaction).
+    command: --config /app/gateway/litellm_config.yaml --port 4000
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-    volumes: [./gateway/litellm_config.yaml:/app/config.yaml:ro]
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm   # keys, budgets, spend logs
+      LITELLM_TELEMETRY: "False"
+    volumes: [./gateway:/app/gateway:ro]
     ports: ["4000:4000"]
 
   # Prometheus runs in the kind cluster (observability/prometheus-values.yaml), reachable on

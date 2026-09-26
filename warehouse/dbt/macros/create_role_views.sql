@@ -47,4 +47,7 @@
         {% endfor %}
         {% do log(role_schema ~ ': ' ~ created | join(', '), info=true) %}
     {% endfor %}
+    {#- run-operation doesn't commit on its own: without this the views are rolled back when it
+        exits, while the log above still reports them as created. -#}
+    {% do adapter.commit() %}
 {% endmacro %}

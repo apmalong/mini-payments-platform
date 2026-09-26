@@ -16,3 +16,4 @@ ingestion/source-postgres/
 orchestration/logs/
 streaming/offline/
 backups/
+gateway/.keys.json

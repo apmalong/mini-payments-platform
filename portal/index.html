@@ -160,8 +160,11 @@ const GROUPS = [
       desc: "Data age per layer (source, raw, mart) and feature PSI vs training data.",
       start: `cd ${ROOT}\\observability; uv run python exporter.py` },
   ]},
-  { title: "Planned", planned: true, services: [
-    { name: "LiteLLM gateway", url: "http://localhost:4000/ui", module: "Module 10", desc: "AI gateway: keys, budgets, routing." },
+  { title: "AI gateway & agents", services: [
+    { name: "LiteLLM gateway", url: "http://localhost:4000/ui", check: "http://localhost:4000/health/liveliness",
+      desc: "Every LLM call: per-team keys, budgets, rate limits, PII redaction, audit log. Admin key in .env (LITELLM_MASTER_KEY).",
+      links: [["API docs", "http://localhost:4000/"]],
+      start: "docker start mpp-litellm" },
   ]},
 ];
 
