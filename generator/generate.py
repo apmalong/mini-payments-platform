@@ -9,7 +9,11 @@ Deliberate messiness for the downstream modules to deal with:
 - ~0.3% of transactions are inserted twice (client retries): same transaction_id, new row id
 - status moves authorized -> captured -> settled after the fact, bumping updated_at
 - ~1% of new rows in continuous mode arrive late (created_at hours in the past)
-- fraud is never labelled directly; it only shows up later as chargebacks, and not all of it
+- fraud is never labelled directly; it only shows up later as chargebacks, and not all of it.
+  Pending disputes wait in the generator schema (not ingested). Continuous mode compresses the
+  delay from days to minutes so labels arrive during a demo
+- fraud signals (AVS, CVV, 3-D Secure, IP country, network risk score) overlap with legitimate
+  traffic, so no single field gives the label away
 
 Card numbers are tokenized at the source: only card_token, BIN and last4 are stored, never a PAN.
 """
@@ -45,6 +49,7 @@ CATEGORIES = [
 ]
 COUNTRIES = [("CA", "CAD", 0.70), ("US", "USD", 0.25), ("GB", "GBP", 0.03), ("DE", "EUR", 0.02)]
 FOREIGN_IP_COUNTRIES = ["NG", "RO", "BR", "VN", "RU", "ID"]
+TRAVEL_IP_COUNTRIES = ["MX", "FR", "JP", "IT", "BR", "US", "GB"]
 CARD_BRANDS = [("visa", "4"), ("mastercard", "5"), ("amex", "37")]
 REFUND_REASONS = ["customer_request", "duplicate", "product_not_received", "defective"]
 FRAUD_REASON = ("10.4", "fraud_card_absent")
@@ -115,6 +120,17 @@ create table if not exists chargebacks (
     status         text not null,
     created_at     timestamptz not null,
     updated_at     timestamptz not null
+);
+
+-- Generator bookkeeping, outside the public schema that ingestion reads: disputes that
+-- haven't been filed yet. They become chargebacks once due_at passes.
+create schema if not exists generator;
+create table if not exists generator.pending_disputes (
+    transaction_id text not null,
+    amount         numeric(18,2) not null,
+    reason_code    text not null,
+    reason         text not null,
+    due_at         timestamptz not null
 );
 """
 
@@ -232,17 +248,25 @@ class Generator:
     # ---------- transactions ----------
 
     def _payload(self, card: dict, entry_mode: str, approved: bool, fraud: bool) -> dict:
+        # Signals overlap on purpose: fraudsters often hold full card details (AVS/CVV match),
+        # and genuine customers mistype addresses. No single field separates the classes.
+        ecommerce = entry_mode == "ecommerce"
+        if fraud:
+            avs = random.choices(["Y", "A", "N", "Z"], weights=[35, 10, 30, 25])[0]
+            cvv_fail, three_ds_rate, risk_mean = 0.3, 0.15, 55
+        else:
+            avs = random.choices(["Y", "A", "N", "Z"], weights=[80, 12, 4, 4])[0]
+            cvv_fail, three_ds_rate, risk_mean = 0.01, 0.8, 22
         return {
             "network": card["brand"],
             "auth_code": uuid.uuid4().hex[:6].upper() if approved else None,
             "response_code": "00" if approved else random.choice(["05", "51", "54", "59"]),
-            "avs_result": random.choice(["N", "Z"]) if fraud else random.choice(["Y", "Y", "Y", "A"]),
-            "cvv_result": ("N" if fraud and random.random() < 0.4 else "M") if entry_mode == "ecommerce" else None,
-            "three_ds": {"version": "2.2", "authenticated": not fraud and random.random() < 0.8}
-            if entry_mode == "ecommerce" else None,
-            "network_risk_score": int(np.clip(np.random.normal(70 if fraud else 20, 15), 0, 99)),
+            "avs_result": avs if ecommerce else None,
+            "cvv_result": ("N" if random.random() < cvv_fail else "M") if ecommerce else None,
+            "three_ds": {"version": "2.2", "authenticated": random.random() < three_ds_rate} if ecommerce else None,
+            "network_risk_score": int(np.clip(np.random.normal(risk_mean, 18), 0, 99)),
             "device": {"type": random.choice(["mobile", "desktop"]), "os": random.choice(["ios", "android", "windows", "macos"])}
-            if entry_mode == "ecommerce" else None,
+            if ecommerce else None,
         }
 
     def _amount(self, merchant: dict, scale: float = 1.0) -> float:
@@ -265,10 +289,13 @@ class Generator:
         merchant = merchant or random.choice(self.merchants)
         entry_mode = random.choice(["chip", "contactless", "contactless", "swipe"]) if merchant["card_present"] else "ecommerce"
         if fraud:
+            # Many fraudsters proxy through the victim's country; many travellers shop from abroad.
             entry_mode = "ecommerce"
-            ip_country = random.choice(FOREIGN_IP_COUNTRIES)
+            ip_country = random.choice(FOREIGN_IP_COUNTRIES) if random.random() < 0.6 else customer["country"]
+        elif entry_mode == "ecommerce":
+            ip_country = random.choice(TRAVEL_IP_COUNTRIES) if random.random() < 0.03 else customer["country"]
         else:
-            ip_country = customer["country"] if entry_mode == "ecommerce" else None
+            ip_country = None
         approved = random.random() > (0.30 if fraud else 0.05)
         status, updated = self._status_for_age(approved, created, now)
         return {
@@ -319,19 +346,32 @@ class Generator:
             if random.random() < (0.25 if t.hour < 7 else 1.0):
                 return t
 
-    def after_effects(self, txns: list[dict], now: datetime) -> tuple[list[dict], list[dict]]:
-        refunds, chargebacks = [], []
+    def after_effects(self, txns: list[dict], now: datetime, unit: timedelta,
+                      with_refunds: bool = True) -> tuple[list[dict], list[dict], list[dict]]:
+        """Refunds, chargebacks already filed, and disputes still to come.
+
+        Delays are measured in `unit`: days for the backfill, minutes in continuous mode so
+        fraud labels arrive while a demo is running.
+        """
+        refunds, chargebacks, pending = [], [], []
+
+        def dispute(t: dict, reason: tuple[str, str], delay: float) -> None:
+            filed = t["created_at"] + unit * delay
+            if filed < now:
+                chargebacks.append(self._chargeback(t, reason, filed, now))
+            else:
+                pending.append({"transaction_id": t["transaction_id"], "amount": t["amount"],
+                                "reason_code": reason[0], "reason": reason[1], "due_at": filed})
+
         for t in txns:
             if t["status"] == "declined":
                 continue
             if t["_fraud"]:
-                # Only ~70% of fraud is ever disputed, and it arrives 5-45 days later.
+                # Only ~70% of fraud is ever disputed, 5-45 units later.
                 if random.random() < 0.7:
-                    created = t["created_at"] + timedelta(days=random.uniform(5, 45))
-                    if created < now:
-                        chargebacks.append(self._chargeback(t, FRAUD_REASON, created, now))
-            elif random.random() < 0.03:
-                created = t["created_at"] + timedelta(days=random.uniform(0.5, 20))
+                    dispute(t, FRAUD_REASON, random.uniform(5, 45))
+            elif with_refunds and random.random() < 0.03:
+                created = t["created_at"] + unit * random.uniform(0.5, 20)
                 if created < now:
                     refunds.append({
                         "refund_id": f"re_{uuid.uuid4().hex[:16]}", "transaction_id": t["transaction_id"],
@@ -339,10 +379,8 @@ class Generator:
                         "reason": random.choice(REFUND_REASONS), "created_at": created, "updated_at": created,
                     })
             elif random.random() < 0.002:
-                created = t["created_at"] + timedelta(days=random.uniform(10, 60))
-                if created < now:
-                    chargebacks.append(self._chargeback(t, random.choice(DISPUTE_REASONS), created, now))
-        return refunds, chargebacks
+                dispute(t, random.choice(DISPUTE_REASONS), random.uniform(10, 60))
+        return refunds, chargebacks, pending
 
     def _chargeback(self, t: dict, reason: tuple[str, str], created: datetime, now: datetime) -> dict:
         resolved = now - created > timedelta(days=30)
@@ -354,7 +392,8 @@ class Generator:
             "status": status, "created_at": created, "updated_at": updated,
         }
 
-    def write(self, txns: list[dict], refunds: list[dict], chargebacks: list[dict]) -> None:
+    def write(self, txns: list[dict], refunds: list[dict], chargebacks: list[dict],
+              pending: list[dict] | None = None) -> None:
         duplicates = [t for t in txns if random.random() < 0.003]
         rows = [{**t, "raw_payload": Jsonb(t["raw_payload"])} for t in txns + duplicates]
         placeholders = ", ".join(f"%({c.strip()})s" for c in TXN_COLS.split(","))
@@ -368,6 +407,10 @@ class Generator:
                 cur.executemany(
                     "insert into chargebacks values (%(chargeback_id)s, %(transaction_id)s, %(amount)s, "
                     "%(reason_code)s, %(reason)s, %(status)s, %(created_at)s, %(updated_at)s)", chargebacks)
+            if pending:
+                cur.executemany(
+                    "insert into generator.pending_disputes values (%(transaction_id)s, %(amount)s, "
+                    "%(reason_code)s, %(reason)s, %(due_at)s)", pending)
         self.conn.commit()
         if self.producer:
             for t in txns + duplicates:
@@ -383,12 +426,13 @@ class Generator:
         while sum(t["_fraud"] for t in txns) < n_transactions * fraud_rate:
             txns.extend(self.fraud_pattern(self.random_time(start, now), now))
         txns.sort(key=lambda t: t["created_at"])
-        refunds, chargebacks = self.after_effects(txns, now)
+        refunds, chargebacks, pending = self.after_effects(txns, now, unit=timedelta(days=1))
         for i in range(0, len(txns), 5000):
             batch = txns[i:i + 5000]
             ids = {t["transaction_id"] for t in batch}
             self.write(batch, [r for r in refunds if r["transaction_id"] in ids],
-                       [c for c in chargebacks if c["transaction_id"] in ids])
+                       [c for c in chargebacks if c["transaction_id"] in ids],
+                       [p for p in pending if p["transaction_id"] in ids])
         return len(txns)
 
     def db_now(self) -> datetime:
@@ -409,7 +453,9 @@ class Generator:
             # Rows are written now, whatever their business time: late arrivals keep an old
             # created_at but get a fresh updated_at, as a database default would give them.
             txn["updated_at"] = max(txn["updated_at"], now)
-        self.write(txns, [], [])
+        _, _, pending = self.after_effects(txns, now, unit=timedelta(minutes=1), with_refunds=False)
+        self.write(txns, [], [], pending)
+        self.started_at = getattr(self, "started_at", now)
 
         # Late updates: move older rows through their lifecycle.
         with self.conn.cursor() as cur:
@@ -422,11 +468,29 @@ class Generator:
             refunded = 0
             if random.random() < 0.3:
                 refunded = cur.execute(
-                    "insert into refunds select 're_' || substr(md5(random()::text), 1, 16), transaction_id, amount, "
-                    "'customer_request', now(), now() from transactions where status = 'settled' "
+                    "insert into refunds select 're_' || substr(md5(random()::text), 1, 16), t.transaction_id, "
+                    "t.amount, 'customer_request', now(), now() from transactions as t where t.status = 'settled' "
+                    "and not exists (select 1 from refunds as r where r.transaction_id = t.transaction_id) "
                     "order by random() limit 1").rowcount
+
+            # File disputes that have come due. now() is fixed for the transaction, so the
+            # insert and delete see the same set.
+            filed = cur.execute(
+                "insert into chargebacks select 'cb_' || substr(md5(random()::text || transaction_id), 1, 16), "
+                "transaction_id, amount, reason_code, reason, 'open', due_at, now() "
+                "from generator.pending_disputes where due_at <= now()").rowcount
+            cur.execute("delete from generator.pending_disputes where due_at <= now()")
+
+            # Resolve disputes: after 30 days for backfilled ones, 10 minutes for ones filed
+            # during this run (same compression as the filing delay).
+            resolved = cur.execute(
+                "update chargebacks set status = case when random() < 0.33 then 'won' else 'lost' end, "
+                "updated_at = now() where status = 'open' and (created_at < now() - interval '30 days' "
+                "or (created_at >= %s and created_at < now() - interval '10 minutes'))",
+                (self.started_at,)).rowcount
         self.conn.commit()
-        return f"+{len(txns)} txns, {captured} captured, {settled} settled, {refunded} refunded"
+        return (f"+{len(txns)} txns, {captured} captured, {settled} settled, {refunded} refunded, "
+                f"{filed} chargebacks filed, {resolved} resolved")
 
 
 def main() -> None:
@@ -453,6 +517,7 @@ def main() -> None:
     with psycopg.connect(dsn()) as conn:
         if args.reset:
             conn.execute("drop table if exists chargebacks, refunds, transactions, cards, customers, merchants cascade")
+            conn.execute("drop schema if exists generator cascade")
         conn.execute(DDL)
         conn.commit()
         gen = Generator(conn, producer, seed=args.seed)
