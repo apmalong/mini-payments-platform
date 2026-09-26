@@ -1,9 +1,105 @@
 version: 2
 
 models:
+  - name: stg_merchants
+    columns:
+      - name: merchant_id
+        data_tests: [unique, not_null]
+
+  - name: stg_customers
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+      - name: full_name
+        config:
+          meta: {pii: true, classification: restricted}
+      - name: email
+        config:
+          meta: {pii: true, classification: restricted}
+      - name: phone
+        config:
+          meta: {pii: true, classification: restricted}
+
+  - name: stg_cards
+    description: Tokenized cards. No PAN ever reaches the warehouse; only BIN and last4.
+    columns:
+      - name: card_token
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+
   - name: stg_transactions
+    description: One row per transaction, deduplicated, with card-network payload fields extracted.
     columns:
       - name: transaction_id
-        tests: [unique, not_null]
+        data_tests: [unique, not_null]
+      - name: merchant_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_merchants')
+                field: merchant_id
+      - name: card_token
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_cards')
+                field: card_token
       - name: customer_email
-        meta: {pii: true, classification: restricted}   # Module 5
+        config:
+          meta: {pii: true, classification: restricted}
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [authorized, captured, settled, declined]
+      - name: currency
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fx_rates')
+                field: currency
+      - name: amount
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: false
+      - name: network_risk_score
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 99
+
+  - name: stg_refunds
+    columns:
+      - name: refund_id
+        data_tests: [unique, not_null]
+      - name: transaction_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_transactions')
+                field: transaction_id
+
+  - name: stg_chargebacks
+    columns:
+      - name: chargeback_id
+        data_tests: [unique, not_null]
+      - name: transaction_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_transactions')
+                field: transaction_id
+      - name: chargeback_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [open, won, lost]

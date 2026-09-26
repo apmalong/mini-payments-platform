@@ -1,0 +1,9 @@
+snapshots:
+  - name: snap_merchants
+    description: SCD2 history of merchants (name, category, country changes over time).
+    relation: source('raw', 'merchants')
+    config:
+      schema: snapshots
+      unique_key: merchant_id
+      strategy: timestamp
+      updated_at: updated_at

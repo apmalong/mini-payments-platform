@@ -16,3 +16,10 @@ models:
       +materialized: ephemeral
     marts:
       +materialized: table
+
+seeds:
+  payments:
+    fx_rates:
+      +column_types:
+        currency: varchar
+        rate_to_cad: decimal(12,6)

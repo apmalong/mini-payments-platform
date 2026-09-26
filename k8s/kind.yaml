@@ -4,6 +4,6 @@ name: payments
 nodes:
   - role: control-plane
     extraPortMappings:
-      - {containerPort: 30080, hostPort: 8080}
+      - {containerPort: 30080, hostPort: 8090}  # 8080 is taken by a local Apache
   - role: worker
   - role: worker

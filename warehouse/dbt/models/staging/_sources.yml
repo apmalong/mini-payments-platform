@@ -2,14 +2,24 @@ version: 2
 
 sources:
   - name: raw
+    description: Postgres source system, loaded by ingestion/sync.py (PyAirbyte). Timestamps are UTC.
     schema: raw
     tables:
       - name: merchants
       - name: customers
+      - name: cards
       - name: transactions
-        loaded_at_field: updated_at
-        freshness:
-          warn_after: {count: 15, period: minute}
-          error_after: {count: 60, period: minute}
+        config:
+          loaded_at_field: updated_at
+          freshness:
+            warn_after: {count: 15, period: minute}
+            error_after: {count: 60, period: minute}
+        columns:
+          - name: transaction_id
+            description: Not unique in raw. Client retries insert the same transaction twice.
+            data_tests:
+              - unique:
+                  config:
+                    severity: warn   # expected in raw; stg_transactions dedupes
       - name: refunds
       - name: chargebacks

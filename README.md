@@ -58,6 +58,33 @@ stops a connector container, because Windows kills processes with exit code 1 wh
 DuckDB allows one writer per file: stop `sync.py --every` before running another sync or dbt
 against `warehouse.duckdb`.
 
+## Module 3: dbt models
+
+Stop `sync.py --every` first: DuckDB allows one writer at a time.
+
+```powershell
+cd warehouse\dbt
+uv run dbt deps --profiles-dir .
+uv run dbt build --profiles-dir .          # seed, snapshot, models and tests in dependency order
+uv run dbt docs generate --profiles-dir .
+uv run dbt docs serve --profiles-dir . --port 8081   # lineage graph at http://localhost:8081 (8080 is Apache)
+```
+
+| Layer | Models |
+|---|---|
+| staging (views) | `stg_transactions` (deduped, JSON payload extracted), `stg_merchants`, `stg_customers`, `stg_cards`, `stg_refunds`, `stg_chargebacks` |
+| intermediate (ephemeral) | `int_transaction_adjustments`: refunds + chargebacks per transaction |
+| snapshot | `snap_merchants`: SCD2 merchant history |
+| marts (tables) | `fct_transactions` (incremental), `dim_merchants`, `mart_merchant_daily_volume` |
+
+`fct_transactions` reprocesses a transaction when its own row changes *or* a refund/chargeback
+lands against it later (`last_changed_at`). On the `bigquery` target it is partitioned by
+`transaction_date` and clustered by `merchant_id`; `json_field` and `mask_email` are
+dispatched so the same SQL runs on both.
+
+Expected warnings: 501+ duplicate `transaction_id`s in `raw` (client retries, removed in staging),
+and a few transactions refunded above their amount (generator bug the test is there to catch).
+
 ## Quick start (all services)
 
 Needs a current Docker Compose. Compose 2.0.0-beta ignores `profiles:` and tries to start everything.

@@ -3,12 +3,15 @@ payments:
   outputs:
     duckdb:
       type: duckdb
-      path: ../../warehouse.duckdb
+      path: ../../warehouse.duckdb   # relative to warehouse/dbt, where dbt is run
+      schema: analytics
       threads: 4
-    bigquery:            # Module 3 portability demo (BigQuery sandbox)
+      settings:
+        TimeZone: UTC                # raw timestamps are naive UTC; don't reinterpret as local time
+    bigquery:                        # Module 3 portability demo (BigQuery sandbox)
       type: bigquery
       method: oauth
       project: "{{ env_var('GCP_PROJECT', 'your-sandbox-project') }}"
-      dataset: payments
+      dataset: analytics
       location: US
       threads: 4

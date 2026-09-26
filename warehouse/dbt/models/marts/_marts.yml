@@ -1,6 +1,35 @@
 version: 2
 
-# TODO(Module 3): fct_transactions (incremental merge, partition_by transaction_date,
-# cluster_by merchant_id), dim_merchants (from snapshot), mart_merchant_daily_volume.
-# TODO(Module 5): contract: {enforced: true} on each mart.
-models: []
+models:
+  - name: fct_transactions
+    description: >
+      One row per transaction with refund and chargeback outcomes, amounts converted to CAD.
+      On BigQuery: partitioned by transaction_date, clustered by merchant_id.
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+      - name: merchant_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_merchants')
+                field: merchant_id
+      - name: customer_email_hash
+        description: md5 of the lower-cased email. The raw email never reaches a mart.
+      - name: amount_cad
+        data_tests: [not_null]   # fails if a new currency appears without an fx rate
+      - name: has_fraud_chargeback
+        description: >
+          Fraud label, derived from fraud chargebacks. Lags by weeks and misses ~30% of fraud,
+          so treat recent transactions as unlabelled when training (Module 7).
+
+  - name: dim_merchants
+    columns:
+      - name: merchant_id
+        data_tests: [unique, not_null]
+
+  - name: mart_merchant_daily_volume
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [transaction_date, merchant_id]
