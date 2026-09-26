@@ -11,7 +11,7 @@ select
     round(count(case when not t.is_approved then 1 end) * 1.0 / count(*), 4) as decline_rate,
     sum(case when t.is_approved then t.amount_cad else 0 end) as approved_volume_cad,
     sum(t.refunded_amount_cad) as refunded_volume_cad,
-    sum(t.chargeback_count) as chargeback_count,
+    cast(sum(t.chargeback_count) as bigint) as chargeback_count,
     count(case when t.has_fraud_chargeback then 1 end) as fraud_chargeback_count,
     round(count(case when t.is_card_not_present then 1 end) * 1.0 / count(*), 4) as card_not_present_share
 from {{ ref('fct_transactions') }} as t

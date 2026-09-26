@@ -1,34 +1,98 @@
 version: 2
 
+# Marts are the published interface: contracts are enforced, so a change to a column's name or
+# type fails the build instead of silently breaking consumers. Types are DuckDB's; the BigQuery
+# target would need its own (STRING, INT64, NUMERIC, ...).
+#
+# Every column carries a classification (governance/pii_policy.yml). Unclassified = internal.
+
 models:
   - name: fct_transactions
     description: >
       One row per transaction with refund and chargeback outcomes, amounts converted to CAD.
       On BigQuery: partitioned by transaction_date, clustered by merchant_id.
+    config:
+      contract: {enforced: true}
     columns:
-      - name: transaction_id
-        data_tests: [unique, not_null]
+      - {name: transaction_id, data_type: varchar, constraints: [{type: not_null}], data_tests: [unique]}
       - name: merchant_id
+        data_type: varchar
         data_tests:
           - relationships:
-              arguments:
-                to: ref('dim_merchants')
-                field: merchant_id
+              arguments: {to: ref('dim_merchants'), field: merchant_id}
+      - {name: customer_id, data_type: varchar}
+      - {name: card_token, data_type: varchar, description: Network token. Never a PAN.}
       - name: customer_email_hash
-        description: md5 of the lower-cased email. The raw email never reaches a mart.
-      - name: amount_cad
-        data_tests: [not_null]   # fails if a new currency appears without an fx rate
+        data_type: varchar
+        description: md5 of the lower-cased email. Pseudonymous, so still personal data under PIPEDA/GDPR.
+        config:
+          meta: {classification: confidential}
+      - {name: amount, data_type: "decimal(18,2)"}
+      - {name: currency, data_type: varchar}
+      - {name: amount_cad, data_type: "decimal(18,2)", data_tests: [not_null]}
+      - {name: status, data_type: varchar}
+      - {name: is_approved, data_type: boolean}
+      - {name: entry_mode, data_type: varchar}
+      - {name: is_card_not_present, data_type: boolean}
+      - {name: ip_country, data_type: varchar}
+      - {name: card_network, data_type: varchar}
+      - {name: response_code, data_type: varchar}
+      - {name: avs_result, data_type: varchar}
+      - {name: cvv_result, data_type: varchar}
+      - {name: three_ds_authenticated, data_type: boolean}
+      - {name: network_risk_score, data_type: integer}
+      - {name: device_type, data_type: varchar}
+      - {name: refund_count, data_type: bigint}
+      - {name: refunded_amount, data_type: "decimal(38,2)"}
+      - {name: refunded_amount_cad, data_type: "decimal(38,2)"}
+      - {name: chargeback_count, data_type: bigint}
       - name: has_fraud_chargeback
+        data_type: boolean
         description: >
           Fraud label, derived from fraud chargebacks. Lags by weeks and misses ~30% of fraud,
           so treat recent transactions as unlabelled when training (Module 7).
+      - {name: chargeback_status, data_type: varchar}
+      - {name: transaction_date, data_type: date}
+      - {name: created_at, data_type: timestamp}
+      - {name: updated_at, data_type: timestamp}
+      - {name: last_changed_at, data_type: timestamp}
+    data_tests:
+      - volume_anomaly:
+          arguments: {date_column: transaction_date}
+          config: {severity: warn}
 
   - name: dim_merchants
+    config:
+      contract: {enforced: true}
     columns:
-      - name: merchant_id
-        data_tests: [unique, not_null]
+      - {name: merchant_id, data_type: varchar, constraints: [{type: not_null}], data_tests: [unique]}
+      - {name: merchant_name, data_type: varchar}
+      - {name: category, data_type: varchar}
+      - {name: mcc, data_type: varchar}
+      - {name: country, data_type: varchar}
+      - {name: currency, data_type: varchar}
+      - {name: card_present, data_type: boolean}
+      - {name: created_at, data_type: timestamp}
+      - {name: valid_from, data_type: timestamp}
 
   - name: mart_merchant_daily_volume
+    config:
+      contract: {enforced: true}
+    columns:
+      - {name: transaction_date, data_type: date}
+      - {name: merchant_id, data_type: varchar}
+      - {name: merchant_name, data_type: varchar}
+      - {name: category, data_type: varchar}
+      - {name: country, data_type: varchar}
+      - {name: transaction_count, data_type: bigint}
+      - {name: approved_count, data_type: bigint}
+      - {name: declined_count, data_type: bigint}
+      - {name: decline_rate, data_type: double}
+      - {name: approved_volume_cad, data_type: "decimal(38,2)"}
+      - {name: refunded_volume_cad, data_type: "decimal(38,2)"}
+      - {name: chargeback_count, data_type: bigint}
+      - {name: fraud_chargeback_count, data_type: bigint}
+      - {name: card_not_present_share, data_type: double}
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

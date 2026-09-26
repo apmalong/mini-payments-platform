@@ -7,8 +7,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install ruff -r warehouse/dbt/requirements.txt
+      - run: pip install ruff dbt-core==1.12.5 dbt-duckdb==1.11.0 duckdb==1.4.3 sqlglot==30.19.0 pyyaml
       - run: ruff check .
+      # Not runnable yet: CI has no source database, so the raw tables dbt reads don't exist.
+      # TODO(Module 11): load a small raw fixture first, then slim CI (--select state:modified+).
       - run: cd warehouse/dbt && dbt deps --profiles-dir . && dbt build --profiles-dir .
-      # TODO(Module 11): slim CI with --select state:modified+ --defer --state <prod manifest>
-      - run: python governance/check_pii.py
+      - name: Block unmasked PII in marts
+        run: python governance/check_pii.py --skip-compile

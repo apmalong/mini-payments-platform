@@ -1,7 +1,10 @@
-"""Module 4: ingest -> dbt build -> publish, every 15 minutes.
+"""Modules 4-5: contract check -> ingest -> dbt build -> PII check -> role views -> publish.
 
+- source_contract: governance/check_contracts.py; a breaking source change stops the run
 - ingest: ingestion/sync.py (PyAirbyte, Postgres -> DuckDB raw) in its own virtualenv
 - dbt: one Airflow task per model/seed/snapshot, each followed by its tests (Cosmos)
+- pii_check: governance/check_pii.py; unmasked PII in a mart stops the run before publishing
+- role_views: rebuilds the per-role access views (dbt run-operation create_role_views)
 - publish: emits the fct_transactions asset, which the Module 7 training DAG will schedule on
 
 DuckDB allows a single writer, so the DAG runs one task at a time and one run at a time.
@@ -81,6 +84,28 @@ with DAG(
         render_config=RenderConfig(load_method=LoadMode.DBT_MANIFEST, test_behavior=TestBehavior.AFTER_EACH),
     )
 
+    source_contract = BashOperator(
+        task_id="source_contract",
+        bash_command=f"{VENVS}/ingest/bin/python governance/check_contracts.py",
+        cwd=str(PROJECT),
+        env={"POSTGRES_HOST": "host.docker.internal"},
+        append_env=True,
+        retries=0,  # a breaking change won't fix itself on retry
+    )
+
+    pii_check = BashOperator(
+        task_id="pii_check",
+        bash_command=f"{VENVS}/dbt/bin/python governance/check_pii.py",
+        cwd=str(PROJECT),
+        retries=0,
+    )
+
+    role_views = BashOperator(
+        task_id="role_views",
+        bash_command=f"{VENVS}/dbt/bin/dbt run-operation create_role_views --profiles-dir .",
+        cwd=str(DBT_DIR),
+    )
+
     publish = EmptyOperator(task_id="publish", outlets=[FCT_TRANSACTIONS])
 
-    ingest >> transform >> publish
+    source_contract >> ingest >> transform >> pii_check >> role_views >> publish

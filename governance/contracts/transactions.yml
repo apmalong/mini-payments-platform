@@ -1,12 +1,22 @@
-# Module 5: contract for the raw transactions feed. CI fails on breaking changes.
-dataset: raw.transactions
+# Module 5: contract for the raw transactions feed (producer: the payments source system).
+# check_contracts.py compares it with the live table before each ingestion run.
+# Breaking: a column missing, a type changed, or a `nullable: false` column that now allows nulls.
+# Non-breaking (warning): a new column in the source that isn't listed here yet.
+table: public.transactions
 owner: data-platform
+consumers: [ingestion/sync.py, dbt stg_transactions]
 columns:
-  - {name: transaction_id, type: varchar, required: true, unique: true}
-  - {name: merchant_id, type: varchar, required: true}
-  - {name: card_token, type: varchar, required: true, pii: false}   # tokenized, never raw PAN
-  - {name: customer_email, type: varchar, pii: true}
-  - {name: amount, type: decimal(18,2), required: true}
-  - {name: currency, type: varchar, required: true}
-  - {name: raw_payload, type: json}
-  - {name: updated_at, type: timestamp, required: true}
+  - {name: id, type: bigint, nullable: false}
+  - {name: transaction_id, type: text, nullable: false}
+  - {name: merchant_id, type: text, nullable: false}
+  - {name: customer_id, type: text, nullable: false}
+  - {name: card_token, type: text, nullable: false}      # tokenized; a PAN must never appear
+  - {name: customer_email, type: text, nullable: true, pii: true}
+  - {name: amount, type: "numeric(18,2)", nullable: false}
+  - {name: currency, type: text, nullable: false}
+  - {name: status, type: text, nullable: false}
+  - {name: entry_mode, type: text, nullable: false}
+  - {name: ip_country, type: text, nullable: true}
+  - {name: raw_payload, type: jsonb, nullable: true}
+  - {name: created_at, type: timestamptz, nullable: false}
+  - {name: updated_at, type: timestamptz, nullable: false}   # incremental cursor

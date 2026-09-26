@@ -23,3 +23,10 @@ seeds:
       +column_types:
         currency: varchar
         rate_to_cad: decimal(12,6)
+
+vars:
+  # Module 5: which column classifications each role may read (see governance/pii_policy.yml).
+  # `dbt run-operation create_role_views` builds a role_<name> schema of views per role.
+  access_roles:
+    analyst: {classifications: [internal], layers: [marts]}
+    fraud_ops: {classifications: [internal, confidential, restricted], layers: [marts, staging]}

@@ -91,6 +91,24 @@ and a few transactions refunded above their amount (generator bug the test is th
 15 minutes, in a single `airflow standalone` container. UI at http://localhost:8088.
 Setup and the Windows-specific details are in [orchestration/README.md](orchestration/README.md).
 
+## Module 5: governance
+
+The controls, evidence and known gaps are written up for auditors in
+[docs/governance.md](docs/governance.md). The pipeline now runs
+`source_contract → ingest → dbt → pii_check → role_views → publish`.
+
+```powershell
+ingestion\.venv\Scripts\python governance\check_contracts.py              # source schema vs contract
+warehouse\dbt\.venv\Scripts\python governance\check_pii.py --report docs\pii-lineage.md
+cd warehouse\dbt; uv run dbt run-operation create_role_views --profiles-dir .
+```
+
+- **Mart contracts**: names and types enforced at build time.
+- **PII lineage check**: column-level lineage through compiled SQL (sqlglot); fails on any mart
+  column derived from a `pii: true` column without hashing, even if renamed.
+- **Role views**: `role_analyst` / `role_fraud_ops` schemas, filtered by column classification.
+- **Volume anomaly test**: last complete day vs a 14-day baseline.
+
 ## Quick start (all services)
 
 Needs a current Docker Compose. Compose 2.0.0-beta ignores `profiles:` and tries to start everything.

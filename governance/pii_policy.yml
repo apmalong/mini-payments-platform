@@ -1,10 +1,16 @@
-# Module 5: which classifications may appear in which layers, and how they must be masked.
+# Module 5: data classification policy.
+#
+# Columns are tagged in dbt YAML with `meta: {pii: true, classification: <level>}`.
+# Unclassified columns are `internal`.
+
 classifications:
-  restricted:
-    allowed_layers: [staging]
-    required_masking: [mask_email, mask_card_last4]
-  internal:
-    allowed_layers: [staging, intermediate, marts]
-roles:
-  analyst: {can_read: [internal]}
-  fraud_ops: {can_read: [internal, restricted]}
+  internal: Business data with no personal information. Any employee.
+  confidential: Pseudonymous personal data (hashed identifiers). Named roles only.
+  restricted: Direct identifiers (name, email, phone). Never in a published layer.
+
+# Layers consumers read from. check_pii.py fails if a column in these layers is derived from a
+# `pii: true` column without passing through a hashing function (md5/sha).
+published_layers: [marts]
+
+# Role access is defined in warehouse/dbt/dbt_project.yml (vars.access_roles) and enforced as
+# views by `dbt run-operation create_role_views`.

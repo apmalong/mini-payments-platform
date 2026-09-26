@@ -2,3 +2,5 @@ dbt-duckdb
 dbt-bigquery
 sqlfluff
 sqlfluff-templater-dbt
+sqlglot
+pyyaml
