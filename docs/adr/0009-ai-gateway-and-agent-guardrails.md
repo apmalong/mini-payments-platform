@@ -33,4 +33,8 @@ MCP tools are read-only and annotated as such; writes stay behind the user's app
   key was configured; the guard never sees who wrote the query).
 - Names aren't redacted (needs NER, e.g. Presidio); the agent guard inherits the role-views
   simulation of ADR-0004.
-- Without `ANTHROPIC_API_KEY`, only mock mode works; the configuration is otherwise production-shaped.
+- Verified with real model calls: asked to repeat an email, card and phone number, Haiku answered that it
+  "can't repeat back those redacted placeholders", confirming from the model's side that the values never
+  left. A real question produced correct SQL through the guard; asked for emails and pointed at staging,
+  the real model stayed within the analyst tables, so the guard is the backstop, not the usual path.
+  Spend is tracked per key (fractions of a cent per call).

@@ -249,7 +249,7 @@ localhost:9090 to Prometheus's NodePort instead of recreating the cluster.
 ```powershell
 docker compose --env-file .env --profile gateway up -d     # needs database "litellm" in Postgres
 uv run python gateway\setup_keys.py                        # per-team keys -> gateway\.keys.json
-cd agent; uv run python ask.py "Which categories had the most fraud?"   # needs ANTHROPIC_API_KEY
+cd agent; uv run python ask.py "Which categories had the most fraud?"   # real model via the gateway
 cd agent; uv run python ask.py "..." --team local-test --mock-sql "select ..."   # no provider key
 ```
 

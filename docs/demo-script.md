@@ -104,8 +104,10 @@ table from ADR-0007 and the model lifecycle diagram instead.
 
 ### 7:00 - 9:00 · AI tooling with guardrails
 
-**Show:** terminal: `uv run python demo/guardrail_demo.py`. Then, in Claude Code opened in this
-folder: *"Use the investigate-alert skill: what's wrong with the platform right now?"*
+**Show:** terminal: `uv run python demo/guardrail_demo.py`. Then a live question:
+`cd agent; uv run python ask.py "Which merchant categories had the most confirmed fraud?"` (a real
+model call through the gateway, ~5 s). Then, in Claude Code opened in this folder: *"Use the
+investigate-alert skill: what's wrong with the platform right now?"*
 
 **Say:**
 - "Every LLM call goes through one gateway: per-team keys, budgets, rate limits, an audit log, and
