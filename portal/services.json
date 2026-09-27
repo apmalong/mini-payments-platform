@@ -1,0 +1,77 @@
+{
+  "_comment": "The one list of local services: the portal page renders it, portal/status.py checks it every 30 s. check.type: http (any HTTP answer = up), tcp (port accepts a connection), file (path exists). {ROOT} = the project folder.",
+  "groups": [
+    {"title": "Orchestration & warehouse", "services": [
+      {"name": "Airflow", "url": "http://localhost:8088", "check": {"type": "http", "url": "http://localhost:8088/api/v2/monitor/health"},
+       "desc": "payments_pipeline and fraud_model_training. No login.",
+       "links": [["DAGs", "http://localhost:8088/dags"]],
+       "start": "cd {ROOT}\\orchestration; docker compose --env-file ../.env up -d"},
+      {"name": "dbt docs", "url": "http://localhost:8081", "check": {"type": "http", "url": "http://localhost:8081"}, "on_demand": true,
+       "desc": "Model docs, tests and lineage graph. Runs on demand.",
+       "start": "cd {ROOT}\\warehouse\\dbt; uv run dbt docs generate --profiles-dir .; uv run dbt docs serve --profiles-dir . --port 8081"},
+      {"name": "DuckDB UI", "url": "http://localhost:4213", "check": {"type": "http", "url": "http://localhost:4213"}, "on_demand": true,
+       "desc": "SQL notebook over warehouse.duckdb. Pause Airflow first: DuckDB allows one writer.",
+       "start": "cd {ROOT}\\warehouse\\dbt; uv run python -c \"import duckdb; c=duckdb.connect('../../warehouse.duckdb'); c.execute('INSTALL ui; LOAD ui; CALL start_ui()'); input('Enter to stop')\""}
+    ]},
+    {"title": "Streaming", "services": [
+      {"name": "Redpanda Console", "url": "http://localhost:8085", "check": {"type": "http", "url": "http://localhost:8085"},
+       "desc": "Topics, messages and consumer groups.",
+       "links": [["payments.transactions", "http://localhost:8085/topics/payments.transactions"]],
+       "start": "docker start mpp-redpanda mpp-redpanda-console"},
+      {"name": "Redpanda admin API", "url": "http://localhost:9644/v1/status/ready", "check": {"type": "http", "url": "http://localhost:9644/v1/status/ready"},
+       "desc": "Broker health. Kafka clients use localhost:9092.",
+       "links": [["Schema registry", "http://localhost:18081/subjects"]],
+       "start": "docker start mpp-redpanda"},
+      {"name": "RedisInsight", "url": "http://localhost:5540", "check": {"type": "http", "url": "http://localhost:5540"},
+       "desc": "Online feature store. Database 'mpp features (online store)' is already added.",
+       "start": "docker start mpp-redis mpp-redisinsight"},
+      {"name": "Feature consumer metrics", "url": "http://localhost:8000/metrics", "check": {"type": "http", "url": "http://localhost:8000/metrics"}, "on_demand": true,
+       "desc": "Events processed, duplicates, late, lag. Only while the consumer runs.",
+       "start": "cd {ROOT}\\streaming; uv run python consumer.py --score-url http://127.0.0.1:8091/score"}
+    ]},
+    {"title": "Machine learning", "services": [
+      {"name": "MLflow", "url": "http://localhost:5000", "check": {"type": "http", "url": "http://localhost:5000/health"},
+       "desc": "Experiment 'fraud' and the fraud model registry (champion / challenger).",
+       "links": [["Models", "http://localhost:5000/#/models/fraud"], ["Experiments", "http://localhost:5000/#/experiments"]],
+       "start": "docker start mpp-mlflow"}
+    ]},
+    {"title": "Kubernetes (kind cluster 'payments')", "services": [
+      {"name": "Fraud scorer on Kubernetes", "url": "http://localhost:8091/docs", "check": {"type": "http", "url": "http://localhost:8091/readyz"},
+       "desc": "Helm release fraud-scorer in namespace fraud: 2-5 pods behind a NodePort, autoscaled on CPU.",
+       "links": [["Ready", "http://localhost:8091/readyz"], ["Metrics", "http://localhost:8091/metrics/"]],
+       "start": "docker start payments-control-plane payments-worker payments-worker2"}
+    ]},
+    {"title": "Observability", "services": [
+      {"name": "Grafana", "url": "http://localhost:3000", "check": {"type": "http", "url": "http://localhost:3000/api/health"},
+       "desc": "Dashboard 'Payments platform': freshness, scoring SLOs, streaming, drift, alerts. No login.",
+       "links": [["Dashboard", "http://localhost:3000/d/payments-platform"]],
+       "start": "docker start mpp-grafana"},
+      {"name": "Prometheus", "url": "http://localhost:9090", "check": {"type": "http", "url": "http://localhost:9090/-/ready"},
+       "desc": "Runs in the kind cluster; bridged to localhost:9090. Alert rules and SLO recording rules.",
+       "links": [["Alerts", "http://localhost:9090/alerts"], ["Targets", "http://localhost:9090/targets"]],
+       "start": "docker start mpp-prometheus-port"},
+      {"name": "Freshness & drift exporter", "url": "http://localhost:8001/metrics", "check": {"type": "http", "url": "http://localhost:8001/metrics"},
+       "desc": "Data age per layer (source, raw, mart) and feature PSI vs training data.",
+       "start": "cd {ROOT}\\observability; uv run python exporter.py"}
+    ]},
+    {"title": "AI gateway & agents", "services": [
+      {"name": "LiteLLM gateway", "url": "http://localhost:4000/ui", "check": {"type": "http", "url": "http://localhost:4000/health/liveliness"},
+       "desc": "Every LLM call: per-team keys, budgets, rate limits, PII redaction, audit log. Login admin / LITELLM_MASTER_KEY.",
+       "links": [["API docs", "http://localhost:4000/"]],
+       "start": "docker start mpp-litellm"}
+    ]},
+    {"title": "Data stores", "kind": "store", "services": [
+      {"name": "Postgres (source)", "address": "localhost:5433", "check": {"type": "tcp", "host": "localhost", "port": 5433},
+       "desc": "user/password payments · databases payments, airflow, litellm",
+       "start": "docker start mpp-postgres"},
+      {"name": "Kafka API (Redpanda)", "address": "localhost:9092", "check": {"type": "tcp", "host": "localhost", "port": 9092},
+       "desc": "topic payments.transactions, 3 partitions",
+       "start": "docker start mpp-redpanda"},
+      {"name": "Redis (online features)", "address": "localhost:6379", "check": {"type": "tcp", "host": "localhost", "port": 6379},
+       "desc": "features:card:<token>, merchant:<id>:amount_stats",
+       "start": "docker start mpp-redis"},
+      {"name": "DuckDB warehouse", "address": "{ROOT}\\warehouse.duckdb", "check": {"type": "file", "path": "warehouse.duckdb"},
+       "desc": "schemas raw, analytics, role_analyst, role_fraud_ops"}
+    ]}
+  ]
+}

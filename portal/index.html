@@ -54,6 +54,45 @@
   .tag { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); }
   footer { margin-top: 36px; color: var(--muted); font-size: 12px; }
 
+  .dot.idle { background: var(--idle); }
+  .dot.checking { background: var(--idle); opacity: 0.5; }
+  :root { --st-up: #0ca30c; --st-partial: #fab219; --st-down: #d03b3b; --st-none: #e1e0d9; }
+  @media (prefers-color-scheme: dark) { :root { --st-none: #383835; } }
+  .status-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+                     gap: 10px 20px; margin-top: 20px; }
+  .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .segmented button { border: 0; border-radius: 0; padding: 5px 12px; background: var(--panel); }
+  .segmented button + button { border-left: 1px solid var(--line); }
+  .segmented button.active { background: var(--accent); color: #fff; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .sw.up, .bar.up { background: var(--st-up); }
+  .sw.partial, .bar.partial { background: var(--st-partial); }
+  .sw.down, .bar.down { background: var(--st-down); }
+  .sw.none, .bar.none { background: var(--st-none); }
+  .sw.off, .bar.off { background: var(--idle); }
+  .status-row { display: grid; grid-template-columns: 220px minmax(0, 1fr) 56px; align-items: center;
+                gap: 14px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .status-name { font-weight: 600; min-width: 0; line-height: 1.35; }
+  .bars { display: flex; gap: 2px; height: 26px; min-width: 0; }
+  .bar { flex: 1 1 0; min-width: 2px; border-radius: 2px; }
+  .bar:hover { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .uptime { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .axis { display: grid; grid-template-columns: 220px minmax(0, 1fr) 56px; gap: 14px; color: var(--muted);
+          font-size: 12px; margin-top: 6px; }
+  .axis span:first-child { grid-column: 2; }
+  .axis span:last-child { grid-column: 2; justify-self: end; }
+  @media (max-width: 640px) {
+    .status-row, .axis { grid-template-columns: minmax(0, 1fr) 48px; }
+    .status-name { grid-column: 1 / -1; }
+    .axis span:first-child, .axis span:last-child { grid-column: 1; }
+  }
+  .tooltip { position: fixed; z-index: 10; pointer-events: none; background: var(--panel); color: var(--ink);
+             border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+             box-shadow: 0 4px 16px rgba(0,0,0,0.15); max-width: 320px; }
+  .tooltip-error { color: var(--muted); margin-top: 4px; word-break: break-word; }
+
   .tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--line); }
   .tabs a { padding: 8px 14px; color: var(--muted); text-decoration: none; font-weight: 600;
             border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -104,105 +143,36 @@ const { useEffect, useState } = React;
 const html = htm.bind(React.createElement);
 const ROOT = "C:\\projects\\test\\mini-payments-platform";
 
-// check: URL probed for liveness (no-cors: any HTTP answer = up, connection refused = down).
-// Services without an HTTP endpoint have no check and show their connection details instead.
-const GROUPS = [
-  { title: "Orchestration & warehouse", services: [
-    { name: "Airflow", url: "http://localhost:8088", check: "http://localhost:8088/api/v2/monitor/health",
-      desc: "payments_pipeline and fraud_model_training. No login.",
-      links: [["DAGs", "http://localhost:8088/dags"]],
-      start: `cd ${ROOT}\\orchestration; docker compose --env-file ../.env up -d` },
-    { name: "dbt docs", url: "http://localhost:8081", check: "http://localhost:8081",
-      desc: "Model docs, tests and lineage graph. Runs on demand.",
-      start: `cd ${ROOT}\\warehouse\\dbt; uv run dbt docs generate --profiles-dir .; uv run dbt docs serve --profiles-dir . --port 8081` },
-    { name: "DuckDB UI", url: "http://localhost:4213", check: "http://localhost:4213",
-      desc: "SQL notebook over warehouse.duckdb. Pause Airflow first: DuckDB allows one writer.",
-      start: `cd ${ROOT}\\warehouse\\dbt; uv run python -c "import duckdb; c=duckdb.connect('../../warehouse.duckdb'); c.execute('INSTALL ui; LOAD ui; CALL start_ui()'); input('Enter to stop')"` },
-  ]},
-  { title: "Streaming", services: [
-    { name: "Redpanda Console", url: "http://localhost:8085", check: "http://localhost:8085",
-      desc: "Topics, messages and consumer groups.",
-      links: [["payments.transactions", "http://localhost:8085/topics/payments.transactions"]],
-      start: "docker start mpp-redpanda mpp-redpanda-console" },
-    { name: "Redpanda admin API", url: "http://localhost:9644/v1/status/ready", check: "http://localhost:9644/v1/status/ready",
-      desc: "Broker health. Kafka clients use localhost:9092.",
-      links: [["Schema registry", "http://localhost:18081/subjects"]],
-      start: "docker start mpp-redpanda" },
-    { name: "RedisInsight", url: "http://localhost:5540", check: "http://localhost:5540",
-      desc: "Online feature store. Add database: host mpp-redis, port 6379.",
-      start: "docker start mpp-redis mpp-redisinsight" },
-    { name: "Feature consumer metrics", url: "http://localhost:8000/metrics", check: "http://localhost:8000/metrics",
-      desc: "Events processed, duplicates, late, lag. Only while the consumer runs.",
-      start: `cd ${ROOT}\\streaming; uv run python consumer.py --score-url http://127.0.0.1:8091/score` },
-  ]},
-  { title: "Machine learning", services: [
-    { name: "MLflow", url: "http://localhost:5000", check: "http://localhost:5000/health",
-      desc: "Experiment 'fraud' and the fraud model registry (champion / challenger).",
-      links: [["Models", "http://localhost:5000/#/models/fraud"], ["Experiments", "http://localhost:5000/#/experiments"]],
-      start: "docker start mpp-mlflow" },
-  ]},
-  { title: "Kubernetes (kind cluster 'payments')", services: [
-    { name: "Fraud scorer on Kubernetes", url: "http://localhost:8091/docs", check: "http://localhost:8091/readyz",
-      desc: "Helm release fraud-scorer in namespace fraud: 2-5 pods behind a NodePort, autoscaled on CPU.",
-      links: [["Ready", "http://localhost:8091/readyz"], ["Metrics", "http://localhost:8091/metrics/"]],
-      start: `cd ${ROOT}\\k8s; kind create cluster --config kind.yaml; kind load docker-image fraud-scorer:local --name payments; helm upgrade --install fraud-scorer helm/fraud-scorer -n fraud --create-namespace --wait` },
-  ]},
-  { title: "Observability", services: [
-    { name: "Grafana", url: "http://localhost:3000", check: "http://localhost:3000/api/health",
-      desc: "Dashboard 'Payments platform': freshness, scoring SLOs, streaming, drift, alerts. No login.",
-      links: [["Dashboard", "http://localhost:3000/d/payments-platform"]],
-      start: "docker start mpp-grafana" },
-    { name: "Prometheus", url: "http://localhost:9090", check: "http://localhost:9090/-/ready",
-      desc: "Runs in the kind cluster; bridged to localhost:9090. Alert rules and SLO recording rules.",
-      links: [["Alerts", "http://localhost:9090/alerts"], ["Targets", "http://localhost:9090/targets"]],
-      start: "docker start mpp-prometheus-port" },
-    { name: "Freshness & drift exporter", url: "http://localhost:8001/metrics", check: "http://localhost:8001/metrics",
-      desc: "Data age per layer (source, raw, mart) and feature PSI vs training data.",
-      start: `cd ${ROOT}\\observability; uv run python exporter.py` },
-  ]},
-  { title: "AI gateway & agents", services: [
-    { name: "LiteLLM gateway", url: "http://localhost:4000/ui", check: "http://localhost:4000/health/liveliness",
-      desc: "Every LLM call: per-team keys, budgets, rate limits, PII redaction, audit log. Admin key in .env (LITELLM_MASTER_KEY).",
-      links: [["API docs", "http://localhost:4000/"]],
-      start: "docker start mpp-litellm" },
-  ]},
-];
-
-const DATA_STORES = [
-  ["Postgres (source)", "localhost:5433", "user/password payments · db payments, airflow", "docker start mpp-postgres"],
-  ["Kafka API (Redpanda)", "localhost:9092", "topic payments.transactions, 3 partitions", "docker start mpp-redpanda"],
-  ["Redis (online features)", "localhost:6379", "features:card:<token>, merchant:<id>:amount_stats", "docker start mpp-redis"],
-  ["DuckDB warehouse", `${ROOT}\\warehouse.duckdb`, "schemas raw, analytics, role_analyst, role_fraud_ops", null],
-];
-
-async function probe(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3000);
-  try {
-    await fetch(url, { mode: "no-cors", cache: "no-store", signal: controller.signal });
-    return "up";
-  } catch {
-    return "down";
-  } finally {
-    clearTimeout(timer);
-  }
+// The service list lives in services.json, shared with the status collector (portal/status.py),
+// which checks every service every 30 s server-side and keeps the history.
+function useServices() {
+  const [groups, setGroups] = useState([]);
+  useEffect(() => {
+    fetch("/services.json").then(r => r.json()).then(config => {
+      const fill = text => text && text.replaceAll("{ROOT}", ROOT);
+      setGroups(config.groups.map(g => ({ ...g, services: g.services.map(s =>
+        ({ ...s, start: fill(s.start), address: fill(s.address) })) })));
+    }).catch(() => setGroups([]));
+  }, []);
+  return groups;
 }
 
 function useStatuses() {
-  const [statuses, setStatuses] = useState({});
-  const [checkedAt, setCheckedAt] = useState(null);
+  const [data, setData] = useState({ services: {} });
   useEffect(() => {
-    const services = GROUPS.flatMap(g => g.services).filter(s => s.check);
     let stopped = false;
-    const run = async () => {
-      const results = await Promise.all(services.map(async s => [s.name, await probe(s.check)]));
-      if (!stopped) { setStatuses(Object.fromEntries(results)); setCheckedAt(new Date()); }
-    };
-    run();
-    const id = setInterval(run, 15000);
+    const load = () => fetch("/status/current").then(r => r.json())
+      .then(d => !stopped && setData(d)).catch(() => {});
+    load();
+    const id = setInterval(load, 15000);
     return () => { stopped = true; clearInterval(id); };
   }, []);
-  return [statuses, checkedAt];
+  return data;
+}
+
+function timeAgo(ts) {
+  const seconds = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  return seconds < 90 ? `${seconds}s ago` : `${Math.round(seconds / 60)} min ago`;
 }
 
 function Copy({ text }) {
@@ -215,22 +185,110 @@ function Copy({ text }) {
   return html`<button onClick=${copy} title="Copy command">${label}</button>`;
 }
 
-function ServiceCard({ service, status, planned }) {
-  const state = planned ? "planned" : status || "checking";
-  const label = { up: "running", down: "not running", checking: "checking…", planned: service.module }[state];
+function stateOf(service, status) {
+  if (!status) return "checking";
+  if (status.up) return "up";
+  return service.on_demand ? "idle" : "down";
+}
+
+function ServiceCard({ service, status, store }) {
+  const state = stateOf(service, status);
+  const label = { up: `running · ${Math.round(status?.latency_ms ?? 0)} ms`, down: "not running",
+                  idle: "not running (on demand)", checking: "checking…" }[state];
   return html`
-    <div class=${"card" + (planned ? " planned" : "")}>
+    <div class="card">
       <div class="top">
-        <span class=${"dot " + (state === "up" || state === "down" ? state : "")}></span>
-        <span class="name">${planned ? service.name : html`<a href=${service.url} target="_blank" rel="noopener">${service.name}</a>`}</span>
-        <span class=${planned ? "tag" : "state"}>${label}</span>
+        <span class=${"dot " + state} title=${status?.error || ""}></span>
+        <span class="name">${store || !service.url ? service.name
+          : html`<a href=${service.url} target="_blank" rel="noopener">${service.name}</a>`}</span>
+        <span class="state">${label}</span>
       </div>
+      ${store && html`<div class="cmd"><span>${service.address}</span><${Copy} text=${service.address} /></div>`}
       <p class="desc">${service.desc}</p>
-      ${!planned && html`<div class="links">
+      ${!store && html`<div class="links">
         <a href=${service.url} target="_blank" rel="noopener">${service.url.replace("http://", "")}</a>
         ${(service.links || []).map(([text, href]) => html`<a key=${href} href=${href} target="_blank" rel="noopener">${text}</a>`)}
       </div>`}
-      ${state === "down" && service.start && html`<div class="cmd"><span>${service.start}</span><${Copy} text=${service.start} /></div>`}
+      ${(state === "down" || state === "idle") && service.start &&
+        html`<div class="cmd"><span>${service.start}</span><${Copy} text=${service.start} /></div>`}
+    </div>`;
+}
+
+// ---------- status history (portal/status.py via /status/history) ----------
+
+const RANGES = [["1h", "1 hour"], ["24h", "24 hours"], ["7d", "7 days"]];
+
+function bucketClass(bucket, onDemand) {
+  if (!bucket) return "none";
+  if (bucket.up === bucket.checks) return "up";
+  if (onDemand) return "off";   // off is the normal state for on-demand tools, not an outage
+  return bucket.up === 0 ? "down" : "partial";
+}
+
+function formatTime(ts, range) {
+  const date = new Date(ts * 1000);
+  return range === "7d" ? date.toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })
+                        : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function StatusView({ groups }) {
+  const [range, setRange] = useState(() => { try { return localStorage.getItem("status-range") || "24h"; } catch { return "24h"; } });
+  const [data, setData] = useState(null);
+  const [hover, setHover] = useState(null);
+  useEffect(() => {
+    try { localStorage.setItem("status-range", range); } catch {}
+    let stopped = false;
+    const load = () => fetch(`/status/history?range=${range}`).then(r => r.json())
+      .then(d => !stopped && setData(d)).catch(() => {});
+    load();
+    const id = setInterval(load, 30000);
+    return () => { stopped = true; clearInterval(id); };
+  }, [range]);
+
+  const checked = groups.map(g => ({ ...g, services: g.services.filter(s => s.check) })).filter(g => g.services.length);
+  return html`
+    <div class="status">
+      <div class="status-controls">
+        <div class="segmented" role="group" aria-label="Time range">
+          ${RANGES.map(([key, label]) => html`
+            <button key=${key} class=${range === key ? "active" : ""} onClick=${() => setRange(key)}>${label}</button>`)}
+        </div>
+        <div class="legend">
+          <span><i class="sw up"></i>Up</span><span><i class="sw partial"></i>Partly down</span>
+          <span><i class="sw down"></i>Down</span><span><i class="sw off"></i>Off (on-demand tools)</span><span><i class="sw none"></i>No data</span>
+        </div>
+      </div>
+      ${!data ? html`<p class="desc">Loading history…</p>` : checked.map(group => html`
+        <section key=${group.title}>
+          <h2>${group.title}</h2>
+          ${group.services.map(service => {
+            const history = data.services[service.name];
+            const buckets = history ? history.buckets : Array(data.bars).fill(null);
+            const uptime = history && history.uptime !== null
+              ? `${(history.uptime * 100).toFixed(history.uptime < 1 ? 1 : 0)}%` : "–";
+            return html`
+              <div class="status-row" key=${service.name}>
+                <div class="status-name">${service.name}${service.on_demand ? html` <span class="tag">on demand</span>` : ""}</div>
+                <div class="bars" onMouseLeave=${() => setHover(null)}>
+                  ${buckets.map((bucket, i) => html`
+                    <span key=${i} class=${"bar " + bucketClass(bucket, service.on_demand)}
+                      aria-label=${`${service.name}, ${formatTime(data.start + i * data.bucket_seconds, range)}: ${bucket ? `${bucket.up} of ${bucket.checks} checks up` : "no data"}`}
+                      onMouseEnter=${e => setHover({ service: service.name, bucket, i, x: e.clientX, y: e.clientY })}
+                      onMouseMove=${e => setHover(h => h && { ...h, x: e.clientX, y: e.clientY })}></span>`)}
+                </div>
+                <div class="uptime">${uptime}</div>
+              </div>`;
+          })}
+        </section>`)}
+      ${data && html`<div class="axis"><span>${formatTime(data.start, range)}</span><span>now</span></div>`}
+      ${hover && data && html`
+        <div class="tooltip" style=${{ left: hover.x + 12, top: hover.y + 12 }}>
+          <b>${hover.service}</b>
+          <div>${formatTime(data.start + hover.i * data.bucket_seconds, range)} – ${formatTime(data.start + (hover.i + 1) * data.bucket_seconds, range)}</div>
+          <div>${hover.bucket ? `${hover.bucket.up} of ${hover.bucket.checks} checks up` : "no checks in this period"}</div>
+          ${hover.bucket && hover.bucket.error && html`<div class="tooltip-error">${hover.bucket.error}</div>`}
+        </div>`}
+      <footer>Checked every 30 s by the portal server (portal/status.py); history kept 7 days in portal/data/status.db.</footer>
     </div>`;
 }
 
@@ -328,56 +386,47 @@ function useRoute() {
 
 function App() {
   const route = useRoute();
-  const [statuses, checkedAt] = useStatuses();
-  const checked = Object.values(statuses);
-  const up = checked.filter(s => s === "up").length;
-  const tab = route.startsWith("docs") ? "docs" : route === "architecture" ? "architecture" : "services";
+  const groups = useServices();
+  const status = useStatuses();
+  const checked = groups.flatMap(g => g.services).filter(s => s.check);
+  const up = checked.filter(s => stateOf(s, status.services[s.name]) === "up").length;
+  const latest = Math.max(0, ...Object.values(status.services).map(s => s.ts));
+  const tab = route.startsWith("docs") ? "docs" : ["architecture", "status"].includes(route) ? route : "services";
   return html`
     <main>
       <header>
         <h1>Payments platform · local</h1>
         <span class="summary">
-          ${checkedAt ? html`<b>${up}</b> of ${checked.length} web services up · checked ${checkedAt.toLocaleTimeString()}` : "checking services…"}
+          ${latest ? html`<b>${up}</b> of ${checked.length} services up · checked ${timeAgo(latest)}` : "waiting for the first check…"}
         </span>
       </header>
       <nav class="tabs">
         <a href="#services" class=${tab === "services" ? "active" : ""}>Services</a>
+        <a href="#status" class=${tab === "status" ? "active" : ""}>Status</a>
         <a href="#architecture" class=${tab === "architecture" ? "active" : ""}>Architecture</a>
         <a href="#docs" class=${tab === "docs" ? "active" : ""}>Docs</a>
       </nav>
       ${tab === "architecture" && html`<${DocView} path="architecture.md" wide=${true} />`}
       ${tab === "docs" && html`<${DocsView} path=${route.replace(/^docs\/?/, "")} />`}
-      ${tab === "services" && html`<${ServicesView} statuses=${statuses} />`}
+      ${tab === "status" && html`<${StatusView} groups=${groups} />`}
+      ${tab === "services" && html`<${ServicesView} groups=${groups} statuses=${status.services} />`}
     </main>`;
 }
 
-function ServicesView({ statuses }) {
+function ServicesView({ groups, statuses }) {
   return html`
     <div>
-      ${GROUPS.map(group => html`
+      ${groups.map(group => html`
         <section key=${group.title}>
           <h2>${group.title}</h2>
           <div class="grid">
-            ${group.services.map(s => html`<${ServiceCard} key=${s.name} service=${s} status=${statuses[s.name]} planned=${group.planned} />`)}
+            ${group.services.map(s => html`<${ServiceCard} key=${s.name} service=${s} status=${statuses[s.name]} store=${group.kind === "store"} />`)}
           </div>
         </section>`)}
-      <section>
-        <h2>Data stores (no web UI)</h2>
-        <div class="grid">
-          ${DATA_STORES.map(([name, address, detail, start]) => html`
-            <div class="card" key=${name}>
-              <div class="top"><span class="name">${name}</span></div>
-              <div class="cmd"><span>${address}</span><${Copy} text=${address} /></div>
-              <p class="desc">${detail}</p>
-              ${start && html`<p class="desc">Start: <code>${start}</code></p>`}
-            </div>`)}
-        </div>
-      </section>
       <footer>
-        Status checks run every 15 s from this page. Serve it with
-        <code>uv run python portal/serve.py</code> from the project folder and open
-        http://localhost:8099: the browser allows the checks, and the Architecture and Docs tabs
-        read docs/ through it.
+        Status comes from the portal server, which checks every service every 30 s; the Status tab
+        shows the history. Serve the portal with <code>uv run python portal/serve.py</code> from the
+        project folder and open http://localhost:8099.
       </footer>
     </div>`;
 }

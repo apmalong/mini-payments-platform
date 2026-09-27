@@ -5,11 +5,19 @@ data platform (ingest → model → orchestrate → govern → stream → ML →
 
 ## Portal
 
-Every local UI, with live up/down status and start commands:
+Every local service with live status, status history, the architecture diagrams and the docs:
 
 ```powershell
-uv run python portal/serve.py   # then open http://localhost:8099 (Services, Architecture, Docs)
+uv run python portal/serve.py   # then open http://localhost:8099
 ```
+
+- **Services**: each UI and data store with its status and response time, links, and the start
+  command for anything that's down. The list is `portal/services.json`.
+- **Status**: uptime bars per service over the last hour, 24 hours or 7 days. The portal server
+  checks every service every 30 s (`portal/status.py`: HTTP, TCP for Postgres/Kafka/Redis, and the
+  warehouse file) and keeps 7 days in `portal/data/status.db`. It's independent of Prometheus on
+  purpose: Prometheus runs in the kind cluster, which is one of the things being checked.
+- **Architecture** and **Docs**: rendered from `docs/`.
 
 ## Demo
 

@@ -1,4 +1,4 @@
-"""Serves the portal, plus the project's docs read-only.
+"""Serves the portal, the project's docs read-only, and service status history.
 
 Only portal/ and Markdown/images under docs/ are reachable: serving the project root instead
 would expose .env and the data files. Standard library only; any of the project's Pythons work.
@@ -9,6 +9,8 @@ import http.server
 import json
 import urllib.parse
 from pathlib import Path
+
+import status
 
 ROOT = Path(__file__).resolve().parent.parent
 PORTAL = ROOT / "portal"
@@ -41,6 +43,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if path == "/status/current":
+            return self.send_bytes(json.dumps(status.current()).encode(), "application/json")
+        if path == "/status/history":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            body = json.dumps(status.history(query.get("range", ["24h"])[0])).encode()
+            return self.send_bytes(body, "application/json")
         if path == "/docs/index.json":
             return self.send_bytes(json.dumps(doc_index()).encode(), "application/json")
         if path.startswith("/docs/"):
@@ -62,6 +70,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    status.start_collector()  # checks every service every 30 s while the portal runs
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 8099), Handler)
-    print("portal on http://localhost:8099", flush=True)
+    print("portal on http://localhost:8099 (status collector running)", flush=True)
     server.serve_forever()
