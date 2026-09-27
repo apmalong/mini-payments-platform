@@ -11,6 +11,12 @@ Every local UI, with live up/down status and start commands:
 uv run python portal/serve.py   # then open http://localhost:8099 (Services, Architecture, Docs)
 ```
 
+## Demo
+
+A 10-minute walk-through with timings, talking points and fallbacks: [docs/demo-script.md](docs/demo-script.md).
+`uv run python demo/preflight.py` says what to start first; `demo/` has one-command helpers for the
+PII leak, a fraud burst and the gateway guardrail.
+
 ## Layout
 
 | Folder | Module | Purpose |

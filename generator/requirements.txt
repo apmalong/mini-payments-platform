@@ -2,3 +2,4 @@ faker
 numpy
 psycopg[binary]
 confluent-kafka
+duckdb==1.4.3   # demo/fraud_burst.py reads the consumer's Parquet

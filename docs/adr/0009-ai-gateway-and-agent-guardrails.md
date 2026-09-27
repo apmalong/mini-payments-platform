@@ -28,8 +28,9 @@ MCP tools are read-only and annotated as such; writes stay behind the user's app
   output. Only test keys (`local-test`, `ratelimit-demo`) may.
 - **The rate limiter counts rejected requests** (sliding window): a client retrying in a loop stays
   locked out. Clients must back off on 429.
-- Access control doesn't depend on the model behaving: a model asked for customer emails produced
-  SQL against staging and the guard rejected it.
+- Access control doesn't depend on the model behaving: SQL reading customer emails from staging is
+  rejected whatever produced it (tested with the SQL supplied through mock mode, since no provider
+  key was configured; the guard never sees who wrote the query).
 - Names aren't redacted (needs NER, e.g. Presidio); the agent guard inherits the role-views
   simulation of ADR-0004.
 - Without `ANTHROPIC_API_KEY`, only mock mode works; the configuration is otherwise production-shaped.
