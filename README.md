@@ -282,7 +282,7 @@ ci\.venv\Scripts\python ci\run_ci.py     # the whole pipeline, ~80 s; GitHub run
 CI builds its own world: lint (ruff) and 26 unit tests, a fresh `payments_ci` database filled by
 the generator, the source contract, a DuckDB warehouse copied from it (shaped like PyAirbyte
 output), `dbt build` with contracts and tests, and the PII lineage check. It writes only under
-`ci/`. The workflow is `.github/workflows/ci.yml` at the repository root (one level up).
+`ci/`. The workflow is `.github/workflows/ci.yml`.
 
 - **Decisions**: nine ADRs in [docs/adr](docs/adr/README.md), each with the options rejected and
   what went wrong while building it.

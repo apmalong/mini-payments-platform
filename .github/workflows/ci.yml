@@ -1,0 +1,30 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Same pipeline as `python ci/run_ci.py` locally: lint, unit tests, a generated source database,
+# the source contract, a DuckDB warehouse built from it, dbt build (contracts + tests), PII lineage.
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: payments
+          POSTGRES_PASSWORD: payments
+          POSTGRES_DB: payments
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U payments" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ci/requirements.txt
+      - run: pip install -r ci/requirements.txt
+      - run: python ci/run_ci.py --postgres-host localhost --postgres-port 5432

@@ -1,0 +1,14 @@
+# Fast checks before each commit; the full pipeline is `python ci/run_ci.py`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+  - repo: local
+    hooks:
+      - id: unit-tests
+        name: unit tests
+        entry: ci/.venv/Scripts/python -m pytest tests -q
+        language: system
+        pass_filenames: false
+        files: \.py$
