@@ -1,0 +1,4 @@
+# Browser tests and screenshot capture for the portal and the deployed UIs (e2e/README.md).
+pytest
+pytest-playwright
+playwright

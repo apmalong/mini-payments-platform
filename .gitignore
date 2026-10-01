@@ -21,3 +21,4 @@ ci/warehouse_ci.duckdb
 ci/warehouse_ci.duckdb.wal
 ci/target/
 portal/data/
+e2e/test-results/

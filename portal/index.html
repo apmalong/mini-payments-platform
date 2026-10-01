@@ -93,7 +93,8 @@
              box-shadow: 0 4px 16px rgba(0,0,0,0.15); max-width: 320px; }
   .tooltip-error { color: var(--muted); margin-top: 4px; word-break: break-word; }
 
-  .tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--line); }
+  .tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .tabs a { flex: none; }
   .tabs a { padding: 8px 14px; color: var(--muted); text-decoration: none; font-weight: 600;
             border-bottom: 2px solid transparent; margin-bottom: -1px; }
   .tabs a:hover { color: var(--ink); }
@@ -128,6 +129,48 @@
                          font-size: 11px; color: var(--muted); }
   .doc .mermaid.zoomed::after { content: "click to fit"; }
   .doc.wide { max-width: none; }
+
+  .walk { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 28px; margin-top: 20px; }
+  @media (max-width: 760px) { .walk { grid-template-columns: 1fr; } .walk-list { order: 2; } }
+  .walk-list a { display: block; padding: 7px 10px; border-radius: 8px; color: var(--ink); text-decoration: none;
+                 border: 1px solid transparent; margin-bottom: 2px; }
+  .walk-list a:hover { background: var(--code); }
+  .walk-list a.active { background: var(--panel); border-color: var(--line); }
+  .walk-list .num { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .walk-list .count { display: block; font-size: 12px; color: var(--muted); margin-left: 20px; }
+  .walk-case h2 { font-size: 20px; text-transform: none; letter-spacing: -0.01em; color: var(--ink); margin: 0 0 4px; }
+  .walk-case > .desc { margin-bottom: 16px; }
+  .stepper { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .stepper a { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line);
+               color: var(--muted); text-decoration: none; background: var(--panel); }
+  .stepper a:hover { border-color: var(--accent); color: var(--ink); }
+  .stepper a.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px;
+          display: flex; flex-direction: column; gap: 12px; }
+  .step-count { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  .step h3 { font-size: 17px; margin: 0; }
+  .step-body p { margin: 0; }
+  .step-body code, .step-expect code { background: var(--code); border-radius: 4px; padding: 1px 5px; }
+  .step-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .step-expect { border-left: 3px solid var(--accent); padding-left: 10px; }
+  .step-links { display: flex; flex-wrap: wrap; gap: 8px; }
+  .step-link { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 8px;
+               border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 13px; }
+  .step-link:hover { border-color: var(--accent); }
+  .step-link .kind { color: var(--muted); font-size: 12px; }
+  .step-note { font-size: 12px; color: var(--muted); margin: 0; }
+  .shot { margin: 0; }
+  .shot a { display: block; }
+  .shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .shot figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .shot-missing { border: 1px dashed var(--line); border-radius: 8px; padding: 18px; color: var(--muted);
+                  font-size: 13px; text-align: center; background: var(--code); }
+  .step-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
+  .step-nav a { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+                color: var(--ink); text-decoration: none; font-weight: 600; font-size: 13px; }
+  .step-nav a:hover { border-color: var(--accent); }
+  .step-nav a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step-nav .spacer { flex: 1; }
 </style>
 </head>
 <body>
@@ -373,8 +416,127 @@ function DocsView({ path }) {
     </div>`;
 }
 
+// ---------- walkthrough (use cases from walkthrough.json, screenshots from e2e/capture.py) ----------
+
+function useWalkthrough() {
+  const [data, setData] = useState({ cases: null, captured: new Set() });
+  useEffect(() => {
+    // walkthrough/index.json lists the screenshots e2e/capture.py has taken, so the page never
+    // requests one that doesn't exist.
+    Promise.all([fetch("/walkthrough.json").then(r => r.json()),
+                 fetch("/walkthrough/index.json").then(r => r.json()).catch(() => ({ screenshots: [] }))])
+      .then(([walkthrough, index]) => setData({ cases: walkthrough.use_cases, captured: new Set(index.screenshots) }))
+      .catch(() => setData({ cases: [], captured: new Set() }));
+  }, []);
+  return data;
+}
+
+// A link names a service (resolved through services.json, so it follows the environment), a doc,
+// or a portal tab.
+function resolveLink(link, services) {
+  if (link.portal) return { href: link.portal, kind: "portal" };
+  if (link.doc) return { href: `#docs/${link.doc}`, kind: "doc" };
+  const service = services[link.service];
+  if (!service) return { missing: true };
+  return { href: link.path ? new URL(link.path, service.url).href : service.url, kind: "app", service, external: true };
+}
+
+const inline = text => ({ __html: marked.parseInline(text || "") });
+
+function Screenshot({ src, alt, captured }) {
+  const [missing, setMissing] = useState(!captured);
+  if (missing) return html`
+    <div class="shot-missing">No screenshot yet. Capture it with <code>e2e/.venv/Scripts/python e2e/capture.py</code>${" "}while the service is running.</div>`;
+  return html`
+    <figure class="shot">
+      <a href=${src} target="_blank" rel="noopener" title="Open full size"><img src=${src} alt=${alt} loading="lazy" onError=${() => setMissing(true)} /></a>
+      <figcaption>${alt}</figcaption>
+    </figure>`;
+}
+
+function WalkthroughView({ route, groups, statuses }) {
+  const { cases, captured } = useWalkthrough();
+  const [, caseId, stepId] = route.split("/");
+  const services = Object.fromEntries(groups.flatMap(g => g.services).map(s => [s.name, s]));
+  const flat = (cases || []).flatMap((c, ci) => c.steps.map((s, si) => ({ c, s, ci, si })));
+  const index = Math.max(0, flat.findIndex(({ c, s }) => c.id === caseId && (!stepId || s.id === stepId)));
+  const here = flat[index];
+  const hrefOf = item => item && `#walkthrough/${item.c.id}/${item.s.id}`;
+  const prev = hrefOf(flat[index - 1]), next = hrefOf(flat[index + 1]);
+
+  // One listener that moves its own position, so presses faster than React re-renders still count.
+  const nav = React.useRef({});
+  nav.current = { ids: flat.map(hrefOf), index };
+  useEffect(() => { window.scrollTo(0, 0); }, [index]);
+  useEffect(() => {
+    const onKey = e => {
+      if (e.altKey || e.ctrlKey || e.metaKey || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      const target = step && nav.current.ids[nav.current.index + step];
+      if (!target) return;
+      nav.current.index += step;
+      window.location.hash = target;
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  if (cases === null) return html`<p class="desc">Loading the walkthrough…</p>`;
+  if (!here) return html`<p class="desc">No use cases found in walkthrough.json.</p>`;
+  const { c, s, ci, si } = here;
+  const links = (s.links || []).map(link => ({ link, ...resolveLink(link, services) })).filter(l => !l.missing);
+  const down = links.filter(l => l.service && stateOf(l.service, statuses[l.service.name]) !== "up" && statuses[l.service.name]);
+  const nextCase = si === c.steps.length - 1 && flat[index + 1];
+  return html`
+    <div class="walk">
+      <nav class="walk-list" aria-label="Use cases">
+        ${cases.map((uc, i) => html`
+          <a key=${uc.id} href=${`#walkthrough/${uc.id}/${uc.steps[0].id}`} class=${uc.id === c.id ? "active" : ""}>
+            <span class="num">${i + 1}.</span>${uc.title}
+            <span class="count">${uc.steps.length} steps</span>
+          </a>`)}
+      </nav>
+      <div class="walk-case">
+        <h2>${c.title}</h2>
+        <p class="desc">${c.summary}</p>
+        <div class="stepper" role="list">
+          ${c.steps.map((step, i) => html`
+            <a key=${step.id} role="listitem" href=${`#walkthrough/${c.id}/${step.id}`} class=${i === si ? "active" : ""}
+               aria-current=${i === si ? "step" : undefined}>${i + 1}. ${step.title}</a>`)}
+        </div>
+        <article class="step" data-step=${`${c.id}/${s.id}`}>
+          <div class="step-count">Use case ${ci + 1} of ${cases.length} · step ${si + 1} of ${c.steps.length}</div>
+          <h3>${s.title}</h3>
+          <p class="step-body" dangerouslySetInnerHTML=${inline(s.body)}></p>
+          ${s.run && html`<div><div class="step-label">Run, from the project folder</div>
+            <div class="cmd"><span>${s.run}</span><${Copy} text=${s.run} /></div></div>`}
+          ${s.expect && html`<div class="step-expect"><div class="step-label">What you should see</div>
+            <span dangerouslySetInnerHTML=${inline(s.expect)}></span></div>`}
+          ${links.length > 0 && html`<div class="step-links">
+            ${links.map(({ link, href, kind, service, external }) => html`
+              <a key=${href} class="step-link" href=${href} target=${external ? "_blank" : undefined} rel=${external ? "noopener" : undefined}>
+                ${service && html`<span class=${"dot " + stateOf(service, statuses[service.name])}></span>`}
+                ${link.label}<span class="kind">${{ app: service?.name, doc: "doc", portal: "portal" }[kind]}</span>
+              </a>`)}
+          </div>`}
+          ${down.length > 0 && html`<p class="step-note">
+            ${down.map(l => l.service.name).join(", ")} ${down.length > 1 ? "aren't" : "isn't"} running here; start it from the${" "}<a href="#services">Services</a>${" "}tab${s.screenshot ? ", or use the screenshot below" : ""}.</p>`}
+          ${s.screenshot && html`<${Screenshot} key=${`${c.id}/${s.id}`} src=${`walkthrough/${c.id}/${s.id}.png`}
+            captured=${captured.has(`${c.id}/${s.id}`)} alt=${s.screenshot.alt || s.title} />`}
+        </article>
+        <div class="step-nav">
+          ${prev ? html`<a href=${prev}>← Back</a>` : html`<span></span>`}
+          <span class="spacer"></span>
+          ${next ? html`<a class="primary" href=${next}>${nextCase ? `Next: ${nextCase.c.title} →` : "Next →"}</a>`
+                 : html`<a href="#docs">Done: browse the docs →</a>`}
+        </div>
+        <footer>Use the arrow keys to move between steps. Steps live in <code>portal/walkthrough.json</code>.</footer>
+      </div>
+    </div>`;
+}
+
 function useRoute() {
-  const read = () => window.location.hash.replace(/^#/, "") || "services";
+  const read = () => window.location.hash.replace(/^#/, "") || "walkthrough";
   const [route, setRoute] = useState(read);
   useEffect(() => {
     const onChange = () => setRoute(read());
@@ -391,7 +553,8 @@ function App() {
   const checked = groups.flatMap(g => g.services).filter(s => s.check);
   const up = checked.filter(s => stateOf(s, status.services[s.name]) === "up").length;
   const latest = Math.max(0, ...Object.values(status.services).map(s => s.ts));
-  const tab = route.startsWith("docs") ? "docs" : ["architecture", "status"].includes(route) ? route : "services";
+  const tab = route.startsWith("docs") ? "docs" : route.startsWith("walkthrough") ? "walkthrough"
+            : ["architecture", "status"].includes(route) ? route : "services";
   return html`
     <main>
       <header>
@@ -401,11 +564,13 @@ function App() {
         </span>
       </header>
       <nav class="tabs">
+        <a href="#walkthrough" class=${tab === "walkthrough" ? "active" : ""}>Walkthrough</a>
         <a href="#services" class=${tab === "services" ? "active" : ""}>Services</a>
         <a href="#status" class=${tab === "status" ? "active" : ""}>Status</a>
         <a href="#architecture" class=${tab === "architecture" ? "active" : ""}>Architecture</a>
         <a href="#docs" class=${tab === "docs" ? "active" : ""}>Docs</a>
       </nav>
+      ${tab === "walkthrough" && html`<${WalkthroughView} route=${route} groups=${groups} statuses=${status.services} />`}
       ${tab === "architecture" && html`<${DocView} path="architecture.md" wide=${true} />`}
       ${tab === "docs" && html`<${DocsView} path=${route.replace(/^docs\/?/, "")} />`}
       ${tab === "status" && html`<${StatusView} groups=${groups} />`}

@@ -5,12 +5,18 @@ data platform (ingest → model → orchestrate → govern → stream → ML →
 
 ## Portal
 
-Every local service with live status, status history, the architecture diagrams and the docs:
+A guided walkthrough of the use cases, every local service with live status, status history, the
+architecture diagrams and the docs:
 
 ```powershell
 uv run python portal/serve.py   # then open http://localhost:8099
 ```
 
+- **Walkthrough** (the landing page): eight use cases from start to finish, each a series of steps
+  with the command to run, what you should see, a screenshot, and links to the UI or doc. Steps
+  live in `portal/walkthrough.json`; links name services from `services.json`, so they follow the
+  environment. Screenshots are captured by `e2e/capture.py`, and the page is tested in Chromium by
+  `e2e/` (Playwright), which CI runs: see [e2e/README.md](e2e/README.md).
 - **Services**: each UI and data store with its status and response time, links, and the start
   command for anything that's down. The list is `portal/services.json`.
 - **Status**: uptime bars per service over the last hour, 24 hours or 7 days. The portal server
@@ -41,6 +47,7 @@ PII leak, a fraud burst and the gateway guardrail.
 | `gateway/` | 10A | LiteLLM AI gateway config |
 | `.claude/skills/` | 10B | Agentic dev tooling |
 | `docs/` | 11 | Architecture, ADRs, runbooks, roadmap |
+| `portal/`, `e2e/` | – | Walkthrough and service portal; Playwright tests and screenshot capture |
 
 ## Module 1: source database
 

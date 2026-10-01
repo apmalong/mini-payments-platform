@@ -4,7 +4,9 @@ Only portal/ and Markdown/images under docs/ are reachable: serving the project 
 would expose .env and the data files. Standard library only; any of the project's Pythons work.
 
     python portal/serve.py          # http://localhost:8099
+    python portal/serve.py --port 8199 --no-collector   # e2e tests: no background checks
 """
+import argparse
 import http.server
 import json
 import urllib.parse
@@ -70,7 +72,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    status.start_collector()  # checks every service every 30 s while the portal runs
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 8099), Handler)
-    print("portal on http://localhost:8099 (status collector running)", flush=True)
+    parser = argparse.ArgumentParser(description="Serve the portal")
+    parser.add_argument("--port", type=int, default=8099)
+    parser.add_argument("--no-collector", action="store_true", help="don't check services in the background")
+    args = parser.parse_args()
+    if not args.no_collector:
+        status.start_collector()  # checks every service every 30 s while the portal runs
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    collector = "off" if args.no_collector else "running"
+    print(f"portal on http://localhost:{args.port} (status collector {collector})", flush=True)
     server.serve_forever()

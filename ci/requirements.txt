@@ -10,3 +10,6 @@ psycopg[binary]
 prometheus-client
 faker
 numpy
+# Portal browser tests (e2e/): also run `python -m playwright install chromium` once.
+playwright
+pytest-playwright

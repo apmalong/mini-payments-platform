@@ -4,7 +4,7 @@
     python ci/run_ci.py --postgres-host localhost --postgres-port 5432   # GitHub service container
 
 Steps, stopping at the first failure:
-  1. lint (ruff) and unit tests (pytest)
+  1. lint (ruff), unit tests (pytest) and the portal's browser tests (e2e/, Playwright + Chromium)
   2. source fixture: a fresh payments_ci database filled by the real generator (small backfill)
   3. source contract check against it
   4. warehouse fixture: raw tables copied from payments_ci into ci/warehouse_ci.duckdb with DuckDB's
@@ -100,6 +100,7 @@ def main() -> None:
     if not args.skip_lint:
         step("lint", [tool("ruff"), "check", "."])
     step("unit tests", [sys.executable, "-m", "pytest", "tests", "-q"])
+    step("portal browser tests", [sys.executable, "-m", "pytest", "e2e", "-q"])
     create_source_db(pg)
     step("generate source data", [sys.executable, "generator/generate.py", "--reset", "--merchants", "20",
                                   "--customers", "500", "--transactions", "3000", "--days", "90"], env=source_env)

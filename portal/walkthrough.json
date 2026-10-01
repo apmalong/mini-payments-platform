@@ -1,0 +1,241 @@
+{
+  "_comment": "Use cases for the portal's Walkthrough tab, start to finish. Links name a service from services.json (plus a path) or a doc under docs/, so the same file works wherever services.json points. A step's screenshot is captured by e2e/capture.py into portal/walkthrough/<use case>/<step>.png from the spec here: the service and path to open, text or a selector to wait for, text to scroll to, selectors to mask. 'portal' means the portal itself.",
+  "use_cases": [
+    {
+      "id": "tour",
+      "title": "Find your way around",
+      "summary": "What the platform is, what runs where, and how to tell it's healthy.",
+      "steps": [
+        {
+          "id": "architecture",
+          "title": "See the whole system",
+          "body": "A small payments data platform built in production shapes: a source system, batch ELT into a warehouse with dbt and Airflow, a real-time path that scores every transaction for fraud, and the governance, MLOps and observability around it. Batch runs along the top of the overview, real time along the bottom, and they meet in the model.",
+          "expect": "The system overview diagram, then one diagram per area further down.",
+          "links": [{"portal": "#architecture", "label": "Architecture"}],
+          "screenshot": {"service": "portal", "path": "/#architecture", "wait_for_selector": ".doc .mermaid svg", "alt": "System overview diagram"}
+        },
+        {
+          "id": "services",
+          "title": "Check everything is running",
+          "body": "Every service, its address and what it's for. The portal checks each one every 30 seconds; anything down shows the command that starts it. The Status tab keeps seven days of history.",
+          "expect": "Green dots for the core services. On-demand tools (dbt docs, DuckDB UI) show grey until you start them.",
+          "links": [{"portal": "#services", "label": "Services"}, {"portal": "#status", "label": "Status history"}],
+          "screenshot": {"service": "portal", "path": "/#services", "wait_for_selector": ".card", "alt": "Service cards with live status"}
+        }
+      ]
+    },
+    {
+      "id": "pipeline",
+      "title": "Load, transform and publish data you can trust",
+      "summary": "Postgres to the warehouse every 15 minutes, with gates that stop bad data before it's published.",
+      "steps": [
+        {
+          "id": "source",
+          "title": "Generate source traffic",
+          "body": "The generator writes realistic transactions, refunds and chargebacks to Postgres (the source system) and streams each transaction to Kafka.",
+          "run": "cd generator; uv run python generate.py --continuous --stream",
+          "expect": "A line per batch of transactions written. Leave it running for the rest of the walkthrough."
+        },
+        {
+          "id": "airflow",
+          "title": "Follow a pipeline run in Airflow",
+          "body": "The order is the point: `source_contract` → `ingest` → one task per dbt model with its tests → `pii_check` → `role_views` → `publish`. A breaking source schema change stops the run before ingestion; a failed test or an unmasked personal column stops it before anything is published.",
+          "expect": "Recent runs of `payments_pipeline` in green, every 15 minutes.",
+          "links": [{"service": "Airflow", "path": "/dags/payments_pipeline", "label": "payments_pipeline"}],
+          "screenshot": {"service": "Airflow", "path": "/dags/payments_pipeline", "wait_for_text": "payments_pipeline", "delay_ms": 1500, "alt": "Airflow graph of payments_pipeline"}
+        },
+        {
+          "id": "lineage",
+          "title": "Explore the models and their lineage",
+          "body": "Staging models clean the raw tables, marts publish facts and dimensions, and every model has tests and documented columns, including which ones hold personal data.",
+          "run": "cd warehouse\\dbt; uv run dbt docs generate --profiles-dir .; uv run dbt docs serve --profiles-dir . --port 8081",
+          "expect": "The dbt docs site; the lineage graph button is at the bottom right.",
+          "links": [{"service": "dbt docs", "label": "dbt docs"}],
+          "screenshot": {"service": "dbt docs", "path": "/", "wait_for_text": "payments", "delay_ms": 1500, "alt": "dbt docs site"}
+        },
+        {
+          "id": "freshness",
+          "title": "Check the data is fresh",
+          "body": "Freshness is measured per layer (source, raw, mart), so an alert says which stage stalled, not just that the mart is old. The SLO: `fct_transactions` changed within 15 minutes, 99% of the time.",
+          "expect": "All three ages under 15 minutes, and the 24-hour share near 100%.",
+          "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}, {"doc": "slos.md", "label": "SLOs"}],
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "Is the data fresh?", "delay_ms": 3000, "alt": "Freshness row of the Grafana dashboard"}
+        },
+        {
+          "id": "breaks",
+          "title": "See what happens when it breaks",
+          "body": "Stop the generator (Ctrl+C). Within about 20 minutes `SourceQuiet` and `MartDataStale` fire in Prometheus, and each alert links to its runbook: what it means, how to diagnose it, how to fix and verify.",
+          "expect": "Pending, then firing alerts; restart the generator and they resolve after the next run.",
+          "links": [{"service": "Prometheus", "path": "/alerts", "label": "Prometheus alerts"}, {"doc": "runbooks/mart-data-stale.md", "label": "Runbook: stale data"}],
+          "screenshot": {"service": "Prometheus", "path": "/alerts", "wait_for_text": "data-pipeline", "alt": "Prometheus alert rules"}
+        }
+      ]
+    },
+    {
+      "id": "governance",
+      "title": "Keep personal data out of the marts",
+      "summary": "Column-level lineage blocks leaks a name check would miss, and each role sees only what it may read.",
+      "steps": [
+        {
+          "id": "leak",
+          "title": "Try to leak an email",
+          "body": "Nobody writes `select email`. The demo routes an email through a CTE and renames it `contact`. The check traces every mart column back through the compiled SQL, so the leak is blocked: in CI the pull request fails, in Airflow the run stops before publishing.",
+          "run": "uv run python demo/pii_leak_demo.py",
+          "expect": "LEAK: the check fails and names the column and the source it came from, then the demo removes its model. About 30 seconds. It runs against the CI warehouse, so run `python ci/run_ci.py` once first.",
+          "links": [{"doc": "pii-lineage.md", "label": "PII lineage report"}]
+        },
+        {
+          "id": "roles",
+          "title": "Read the data as each role",
+          "body": "The `role_analyst` and `role_fraud_ops` schemas hold views with only the columns that role may read, decided by each column's classification tag. An analyst query for card or customer details finds no such columns.",
+          "links": [{"service": "DuckDB UI", "label": "DuckDB UI"}, {"doc": "governance.md", "label": "Data governance"}]
+        },
+        {
+          "id": "controls",
+          "title": "Review the controls and the known gaps",
+          "body": "The governance doc is written for an auditor: what's controlled, how, and how to verify each control. It also lists the gaps, such as the unsalted email hash.",
+          "links": [{"doc": "governance.md", "label": "Data governance"}],
+          "screenshot": {"service": "portal", "path": "/#docs/governance.md", "wait_for_selector": ".doc table", "alt": "Governance controls table"}
+        }
+      ]
+    },
+    {
+      "id": "realtime",
+      "title": "Score transactions for fraud as they happen",
+      "summary": "Kafka to online features in Redis to a scorer on Kubernetes, in milliseconds.",
+      "steps": [
+        {
+          "id": "stream",
+          "title": "Start the feature consumer",
+          "body": "The consumer reads each transaction from Kafka, updates the card's and merchant's features in Redis in one atomic Lua script (so a redelivered event can't count twice), and asks the scorer for a fraud score.",
+          "run": "cd streaming; uv run python consumer.py --score-url http://127.0.0.1:8091/score",
+          "expect": "Events flowing on the topic, and the consumer's metrics counting them.",
+          "links": [{"service": "Redpanda Console", "path": "/topics/payments.transactions", "label": "payments.transactions"}, {"service": "RedisInsight", "label": "RedisInsight"}],
+          "screenshot": {"service": "Redpanda Console", "path": "/topics/payments.transactions", "wait_for_text": "payments.transactions", "delay_ms": 1500, "alt": "Messages on the payments.transactions topic"}
+        },
+        {
+          "id": "attack",
+          "title": "Simulate a card-testing attack",
+          "body": "Eight tiny online charges on one card a few seconds apart, then a large one. The score starts low, then the card's velocity and a new IP country push it over the review threshold partway through. Needs the consumer from the previous step running.",
+          "run": "cd generator; uv run python ../demo/fraud_burst.py",
+          "expect": "A table of the burst's transactions with the score rising."
+        },
+        {
+          "id": "decisions",
+          "title": "Watch the decisions",
+          "body": "The scorer's SLOs (99.9% of requests succeed, 99% under 50 ms) and its decisions per second. The attack shows as a spike in reviews.",
+          "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}],
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "Is scoring healthy?", "scroll_to_text": "Is scoring healthy?", "delay_ms": 3000, "alt": "Scoring row of the Grafana dashboard"}
+        },
+        {
+          "id": "scorer",
+          "title": "Call the scorer directly",
+          "body": "The scorer runs on Kubernetes: two to five pods, autoscaled on CPU. A rolling upgrade under load dropped none of 18,744 requests.",
+          "links": [{"service": "Fraud scorer on Kubernetes", "label": "Scorer API"}, {"doc": "adr/0007-scorer-on-kubernetes.md", "label": "ADR-0007"}],
+          "screenshot": {"service": "Fraud scorer on Kubernetes", "path": "/docs", "wait_for_text": "score", "delay_ms": 1000, "alt": "Scorer API documentation"}
+        }
+      ]
+    },
+    {
+      "id": "ml",
+      "title": "Train, promote and monitor the model",
+      "summary": "Training on matured labels, promotion only when the challenger wins, and drift alerts when live data moves.",
+      "steps": [
+        {
+          "id": "training",
+          "title": "Retrain when the mart is published",
+          "body": "`fraud_model_training` runs whenever `payments_pipeline` publishes `fct_transactions`. It trains only on transactions older than the 45-day chargeback window, split by time, and skips training when that set hasn't grown since the last run.",
+          "links": [{"service": "Airflow", "path": "/dags/fraud_model_training", "label": "fraud_model_training"}]
+        },
+        {
+          "id": "registry",
+          "title": "Compare champion and challenger",
+          "body": "Each run is logged to MLflow. A new model becomes the champion only if it beats the current one on the same data.",
+          "links": [{"service": "MLflow", "path": "/#/models/fraud", "label": "fraud model"}, {"service": "MLflow", "path": "/#/experiments", "label": "Experiments"}],
+          "screenshot": {"service": "MLflow", "path": "/#/models/fraud", "wait_for_text": "fraud", "delay_ms": 1500, "alt": "MLflow registry for the fraud model"}
+        },
+        {
+          "id": "drift",
+          "title": "Watch for drift",
+          "body": "The population stability index of each live feature against the training data. Below 0.1 is stable; above 0.25 alerts.",
+          "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}, {"doc": "runbooks/model-drift.md", "label": "Runbook: drift"}],
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "Has the model's input drifted?", "scroll_to_text": "Has the model's input drifted?", "delay_ms": 3000, "alt": "Drift row of the Grafana dashboard"}
+        }
+      ]
+    },
+    {
+      "id": "ai",
+      "title": "Ask the warehouse through an AI gateway",
+      "summary": "Every LLM call goes through one gateway with keys, budgets, an audit log and PII redaction.",
+      "steps": [
+        {
+          "id": "guardrail",
+          "title": "See personal data redacted",
+          "body": "The demo sends a prompt containing an email, a card number and a phone number through the gateway (a mock response, so no provider key is needed), then reads the gateway's audit log for what was actually sent.",
+          "run": "uv run python demo/guardrail_demo.py",
+          "expect": "The prompt as typed, and the prompt as the model received it."
+        },
+        {
+          "id": "ask",
+          "title": "Ask a question in plain English",
+          "body": "The model writes SQL; the SQL runs through the same guard the MCP server uses, so it can only read the analyst views, however it phrases the query.",
+          "run": "cd agent; uv run python ask.py \"Which merchant categories had the most confirmed fraud?\"",
+          "expect": "The generated SQL and the answer table, in about 5 seconds.",
+          "links": [{"doc": "adr/0009-ai-gateway-and-agent-guardrails.md", "label": "ADR-0009"}]
+        },
+        {
+          "id": "audit",
+          "title": "Check spend and the audit log",
+          "body": "Spend per team key, and every request after redaction. Log in as admin with `LITELLM_MASTER_KEY`.",
+          "links": [{"service": "LiteLLM gateway", "label": "Gateway UI"}]
+        }
+      ]
+    },
+    {
+      "id": "elt",
+      "title": "Track ELT cost, efficiency and SLOs",
+      "summary": "Every run is recorded in the warehouse, so cost, wasted work and 30-day error budgets are measured, not guessed.",
+      "steps": [
+        {
+          "id": "dashboard",
+          "title": "Read the cost and SLO row",
+          "body": "Estimated cost for a day and a month, cost per million records, how busy the single warehouse writer is, rows written per record ingested, and what's left of each 30-day error budget.",
+          "expect": "Error budgets near 100%; rows written per record ingested well above 1, because table marts rebuild in full every run.",
+          "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}, {"doc": "elt-metrics.md", "label": "ELT metrics"}],
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "What does ELT cost", "scroll_to_text": "What does ELT cost", "delay_ms": 3000, "alt": "ELT cost and SLO row of the Grafana dashboard"}
+        },
+        {
+          "id": "slos",
+          "title": "See the objectives and why",
+          "body": "99% of pipeline steps succeed, 95% of syncs finish within 5 minutes, and `fct_transactions` is rebuilt within 15 minutes 99% of the time. When a budget runs out, reliability work comes before features.",
+          "links": [{"doc": "slos.md", "label": "SLOs"}, {"doc": "runbooks/elt-cost-and-slos.md", "label": "Runbook: ELT budgets and cost"}]
+        },
+        {
+          "id": "ledger",
+          "title": "Ask the run ledger",
+          "body": "The `ops` schema keeps every sync and every dbt node run. The metrics doc has queries for the slowest models and the biggest cost drivers.",
+          "links": [{"service": "DuckDB UI", "label": "DuckDB UI"}, {"doc": "adr/0010-elt-run-ledger-in-the-warehouse.md", "label": "ADR-0010"}]
+        }
+      ]
+    },
+    {
+      "id": "decisions",
+      "title": "Understand the decisions",
+      "summary": "Why it's built this way, what was rejected, and what changes next.",
+      "steps": [
+        {
+          "id": "adrs",
+          "title": "Read the decision records",
+          "body": "Each record keeps the options that were rejected and what the decision cost, including what went wrong while building it.",
+          "links": [{"doc": "adr/README.md", "label": "Decision records"}]
+        },
+        {
+          "id": "roadmap",
+          "title": "See what changes next",
+          "body": "Milestones with exit tests, the risks they address, and the debt register.",
+          "links": [{"doc": "roadmap.md", "label": "Roadmap"}]
+        }
+      ]
+    }
+  ]
+}
