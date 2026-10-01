@@ -1248,6 +1248,528 @@
         "h": 8
       },
       "id": 22
+    },
+    {
+      "type": "row",
+      "title": "What does ELT cost, and is it meeting its SLOs?  (from the run ledger; docs/elt-metrics.md)",
+      "id": 23,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Est. cost, last 24 h",
+      "description": "Sync and dbt busy time at ELT_COMPUTE_USD_PER_HOUR, plus BigQuery bytes billed at ELT_BQ_USD_PER_TIB. An estimate, not a bill.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_estimated_cost_usd{window=\"24h\"}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "noValue": "no data",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 4,
+        "h": 4
+      },
+      "id": 24
+    },
+    {
+      "type": "stat",
+      "title": "Est. cost, last 30 d",
+      "description": "Same estimate over 30 days of the ledger.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_estimated_cost_usd{window=\"30d\"}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "noValue": "no data",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 35,
+        "w": 4,
+        "h": 4
+      },
+      "id": 25
+    },
+    {
+      "type": "stat",
+      "title": "Cost per million records, 7 d",
+      "description": "Estimated cost divided by records the sync read. The unit cost to watch as volume grows.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_cost_per_million_records_usd{window=\"7d\"}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "noValue": "no data",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 35,
+        "w": 4,
+        "h": 4
+      },
+      "id": 26
+    },
+    {
+      "type": "stat",
+      "title": "Writer busy, 24 h",
+      "description": "Share of the last day the single DuckDB writer spent syncing or running dbt. Above 70% runs start to overlap the 15-minute schedule.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_busy_ratio",
+          "instant": true
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ca30c",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 0.5
+              },
+              {
+                "color": "#d03b3b",
+                "value": 0.7
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 35,
+        "w": 4,
+        "h": 4
+      },
+      "id": 27
+    },
+    {
+      "type": "stat",
+      "title": "Rows written per record ingested, 24 h",
+      "description": "Write amplification: rows dbt wrote to table models per source record read. Full-table rebuilds push it up; incremental models bring it down.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_write_amplification",
+          "instant": true
+        }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "no data",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 35,
+        "w": 4,
+        "h": 4
+      },
+      "id": 28
+    },
+    {
+      "type": "stat",
+      "title": "dbt tests passing, 24 h",
+      "description": "Data and unit tests with status pass (warnings count against it).",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_test_pass_ratio",
+          "instant": true
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 0.95
+              },
+              {
+                "color": "#0ca30c",
+                "value": 0.99
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 35,
+        "w": 4,
+        "h": 4
+      },
+      "id": 29
+    },
+    {
+      "type": "bargauge",
+      "title": "Error budget left, 30 days",
+      "description": "Per ELT SLO: 100% untouched, 0% spent. Objectives: step success 99%, sync under 5 min 95%, fct_transactions rebuilt within 15 min 99%. See docs/slos.md.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_error_budget_remaining",
+          "legendFormat": "{{slo}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 0,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 0.25
+              },
+              {
+                "color": "#0ca30c",
+                "value": 0.5
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 8,
+        "h": 8
+      },
+      "id": 30
+    },
+    {
+      "type": "bargauge",
+      "title": "dbt time by node, last 24 h",
+      "description": "Execution seconds per model, seed and snapshot, the ten most expensive. On BigQuery, payments_elt_node_bytes_billed shows the same by bytes.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sort_desc(topk(10, payments_elt_node_seconds))",
+          "legendFormat": "{{node}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "text",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          }
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 39,
+        "w": 10,
+        "h": 8
+      },
+      "id": 31
+    },
+    {
+      "type": "stat",
+      "title": "Last run",
+      "description": "Whether the most recent sync and dbt invocation succeeded.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "payments_elt_last_run_success",
+          "legendFormat": "{{step}}",
+          "instant": true
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value_and_name",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Failed",
+                  "color": "#d03b3b"
+                },
+                "1": {
+                  "text": "OK",
+                  "color": "#0ca30c"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "#0ca30c",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "no runs yet"
+        },
+        "overrides": []
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 39,
+        "w": 6,
+        "h": 8
+      },
+      "id": 32
     }
   ],
   "editable": true

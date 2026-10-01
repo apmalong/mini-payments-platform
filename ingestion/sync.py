@@ -5,6 +5,8 @@
   Postgres primary key, so status changes overwrite the earlier version of the row.
 - Raw data is loaded as-is (ELT). Duplicates from client retries share a transaction_id but have
   different row ids, so they survive into raw on purpose; dbt removes them in Module 3.
+- Every sync, failed or not, appends a row to ops.ingest_runs (duration, records read, rows
+  added): the ingest half of the ELT ledger behind the cost and SLO metrics (docs/elt-metrics.md).
 
 The connector is Java-based, so PyAirbyte runs it in Docker. The container reaches the host's
 Postgres through host.docker.internal.
@@ -13,7 +15,9 @@ import argparse
 import os
 import sys
 import time
+import uuid
 import warnings
+from datetime import UTC, datetime
 from pathlib import Path
 
 os.environ.setdefault("DO_NOT_TRACK", "1")  # turn off PyAirbyte telemetry
@@ -103,16 +107,43 @@ def reset_facts(cache: DuckDBCache) -> None:
             conn.execute(text(f"drop table if exists raw.{name}"))
 
 
+def record_run(cache: DuckDBCache, run: dict) -> None:
+    """Append one row to ops.ingest_runs. A failure to record never hides the sync's own outcome."""
+    try:
+        with cache.get_sql_engine().begin() as conn:
+            conn.execute(text("create schema if not exists ops"))
+            conn.execute(text(
+                "create table if not exists ops.ingest_runs (run_id varchar, airflow_run_id varchar, "
+                "started_at timestamp, finished_at timestamp, status varchar, full_refresh boolean, "
+                "records_read bigint, rows_added bigint, error varchar)"))
+            conn.execute(text(
+                "insert into ops.ingest_runs values (:run_id, :airflow_run_id, :started_at, :finished_at, "
+                ":status, :full_refresh, :records_read, :rows_added, :error)"), run)
+    except Exception as exc:
+        print(f"Could not record the run in ops.ingest_runs: {exc}", file=sys.stderr)
+
+
 def sync(source: ab.Source, cache: DuckDBCache, full_refresh: bool) -> None:
-    before = row_counts(cache)
+    run = {"run_id": str(uuid.uuid4()), "airflow_run_id": os.environ.get("AIRFLOW_CTX_DAG_RUN_ID"),
+           "started_at": datetime.now(UTC).replace(tzinfo=None), "status": "error",
+           "full_refresh": full_refresh, "records_read": None, "rows_added": None, "error": None}
     started = time.time()
+    try:
+        before = row_counts(cache)
+        if full_refresh:
+            reset_facts(cache)
+        source.read(cache, streams=DIMENSIONS, force_full_refresh=True, write_strategy="replace")
+        result = source.read(cache, streams=FACTS, write_strategy="merge")
+        after = row_counts(cache)
+        run.update(status="success", records_read=result.processed_records,
+                   rows_added=sum(after[name] - before[name] for name in FACTS))
+    except Exception as exc:
+        run["error"] = f"{type(exc).__name__}: {exc}"[:500]
+        raise
+    finally:
+        run["finished_at"] = datetime.now(UTC).replace(tzinfo=None)
+        record_run(cache, run)
 
-    if full_refresh:
-        reset_facts(cache)
-    source.read(cache, streams=DIMENSIONS, force_full_refresh=True, write_strategy="replace")
-    result = source.read(cache, streams=FACTS, write_strategy="merge")
-
-    after = row_counts(cache)
     print(f"\nSync finished in {time.time() - started:.0f}s ({result.processed_records} fact records read)")
     print(f"{'table':<14}{'before':>10}{'after':>10}{'change':>10}")
     for name in DIMENSIONS + FACTS:

@@ -234,7 +234,7 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm upgrade --install prometheus prometheus-community/prometheus -n monitoring --create-namespace -f observability/prometheus-values.yaml
 docker run -d --name mpp-prometheus-port --network kind -p 9090:9090 --restart unless-stopped alpine/socat TCP-LISTEN:9090,fork,reuseaddr TCP:payments-control-plane:30090
 docker compose --env-file .env --profile obs up -d            # Grafana, http://localhost:3000
-cd observability; uv run python exporter.py                   # freshness + drift metrics on :8001
+cd observability; uv run python exporter.py                   # freshness, drift, ELT cost/SLO metrics on :8001
 ```
 
 kind's port mappings are fixed at cluster creation, so the `mpp-prometheus-port` container bridges
@@ -246,7 +246,12 @@ localhost:9090 to Prometheus's NodePort instead of recreating the cluster.
   (source / ingestion / transform), consumer down or lagging, scorer down / errors / latency /
   diverged model versions, feature drift and review-rate shift.
 - **SLOs** in [docs/slos.md](docs/slos.md): scorer availability 99.9%, 99% of scores under 50 ms,
-  mart fresh within 15 minutes 99% of the time.
+  mart fresh within 15 minutes 99% of the time; for the ELT pipeline, 99% of steps succeed, 95% of
+  syncs under 5 minutes, `fct_transactions` rebuilt within 15 minutes 99% of the time.
+- **ELT cost and efficiency** in [docs/elt-metrics.md](docs/elt-metrics.md): the sync and a dbt
+  `on-run-end` hook record every run in the warehouse's `ops` schema; the exporter turns that into
+  estimated cost, cost per million records, writer busy time, rows written per record ingested,
+  time per model, and 30-day error budgets.
 - **Drift** is the population stability index of each live feature against the training data,
   computed by the exporter (a lightweight stand-in for Evidently).
 

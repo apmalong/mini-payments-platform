@@ -88,8 +88,48 @@ serverFiles:
             for: 10m
             labels: {severity: ticket}
             annotations:
-              summary: "The {{ $labels.check }} freshness check can't read its source"
+              summary: "The exporter's {{ $labels.check }} check can't read its source"
               runbook: docs/runbooks/mart-data-stale.md
+
+      # ELT cost, efficiency and SLOs, computed by the exporter from the warehouse's ops ledger
+      # (30-day windows outlive this Prometheus's 2-day retention). docs/elt-metrics.md
+      - name: elt
+        rules:
+          - alert: EltErrorBudgetLow
+            expr: payments_elt_error_budget_remaining < 0.25
+            for: 30m
+            labels: {severity: ticket}
+            annotations:
+              summary: "{{ $labels.slo }} has {{ $value | humanizePercentage }} of its 30-day error budget left"
+              runbook: docs/runbooks/elt-cost-and-slos.md
+          - alert: EltErrorBudgetBurnFast
+            # A day at this failure rate spends half the 30-day budget (15x the sustainable rate).
+            expr: |
+              (1 - payments_elt_slo_sli{window="24h"})
+                > on(slo) 15 * (1 - payments_elt_slo_objective)
+            for: 30m
+            labels: {severity: page}
+            annotations:
+              summary: "{{ $labels.slo }} is burning its error budget 15x too fast over the last 24 h"
+              runbook: docs/runbooks/elt-cost-and-slos.md
+          - alert: EltCostSpike
+            # Needs a full week of ledger history, or the 7-day average understates a normal day.
+            expr: |
+              payments_elt_estimated_cost_usd{window="24h"}
+                > ignoring(window) 1.5 * payments_elt_estimated_cost_usd{window="7d"} / 7
+              and on() payments_elt_ledger_age_days >= 7
+            for: 1h
+            labels: {severity: ticket}
+            annotations:
+              summary: "ELT cost for the last 24 h is {{ $value | printf \"$%.2f\" }}, over 1.5x the 7-day daily average"
+              runbook: docs/runbooks/elt-cost-and-slos.md
+          - alert: EltWriterSaturated
+            expr: payments_elt_busy_ratio > 0.7
+            for: 1h
+            labels: {severity: ticket}
+            annotations:
+              summary: "The warehouse writer was busy {{ $value | humanizePercentage }} of the last 24 h: runs will soon overlap the 15-minute schedule"
+              runbook: docs/runbooks/elt-cost-and-slos.md
 
       - name: streaming
         rules:

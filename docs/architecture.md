@@ -155,11 +155,12 @@ flowchart LR
   subgraph sources["Metric sources"]
     M1["scorer pods<br/>requests by status, latency,<br/>decisions, model version"]
     M2["feature consumer<br/>events by outcome, lag"]
-    M3["exporter<br/>freshness per layer,<br/>feature PSI"]
+    M3["exporter<br/>freshness per layer, feature PSI,<br/>ELT cost, efficiency, 30-day SLOs"]
   end
-  M1 --> P["Prometheus<br/>recording rules: 3 SLOs<br/>13 alert rules"]
+  L[("ops ledger in the warehouse<br/>sync.py + dbt on-run-end hook")] --> M3
+  M1 --> P["Prometheus<br/>recording rules: 3 SLOs<br/>17 alert rules"]
   M2 --> P
   M3 --> P
   P --> G["Grafana<br/>Payments platform dashboard"]
-  P --> A["alerts → runbooks<br/>stale data by stage, consumer,<br/>scorer, drift"]
+  P --> A["alerts → runbooks<br/>stale data by stage, consumer,<br/>scorer, drift, ELT budgets and cost"]
 ```

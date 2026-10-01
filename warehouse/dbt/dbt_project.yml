@@ -8,6 +8,10 @@ test-paths: ["tests"]
 macro-paths: ["macros"]
 seed-paths: ["seeds"]
 
+# ELT ledger for cost, efficiency and SLO metrics (macros/record_run_results.sql).
+on-run-end:
+  - "{{ record_run_results(results) }}"
+
 models:
   payments:
     staging:

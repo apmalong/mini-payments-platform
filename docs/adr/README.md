@@ -14,6 +14,7 @@ what the decision cost, including what went wrong while building it.
 | [0007](0007-scorer-on-kubernetes.md) | Run the scorer on Kubernetes with explicit rollout and failure settings |
 | [0008](0008-prometheus-in-cluster-psi-drift.md) | Prometheus in the cluster, and PSI for drift instead of Evidently |
 | [0009](0009-ai-gateway-and-agent-guardrails.md) | An AI gateway for every LLM call; agents constrained at the data layer |
+| [0010](0010-elt-run-ledger-in-the-warehouse.md) | An ELT run ledger in the warehouse for cost, efficiency and SLOs |
 
 New records copy [0000-template.md](0000-template.md) and take the next number. A decision that
 changes is superseded by a new record, not edited.
