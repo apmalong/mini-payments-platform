@@ -61,8 +61,10 @@ def test_screenshots_show_or_say_how_to_capture(page, portal_url):
         page.goto(f"{portal_url}/#walkthrough/{step_id(case, step)}")
         image = ROOT / "portal" / "walkthrough" / case["id"] / f"{step['id']}.png"
         if image.exists():
-            expect(page.locator(".shot img")).to_be_visible()
-            assert page.locator(".shot img").evaluate("img => img.naturalWidth") > 0, step_id(case, step)
+            img = page.locator(".shot img")
+            img.scroll_into_view_if_needed()  # lazy-loaded: below the fold it isn't fetched yet
+            page.wait_for_function("img => img.complete && img.naturalWidth > 0", arg=img.element_handle(),
+                                   timeout=10_000)
         else:
             expect(page.locator(".shot-missing")).to_contain_text("capture.py")
 
