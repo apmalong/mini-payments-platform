@@ -29,7 +29,7 @@ cd e2e; uv venv; uv pip install -r requirements.txt; .venv\Scripts\python -m pla
 ```
 
 Each step's `screenshot` spec in `portal/walkthrough.json` names the service and path to open, the
-text or selector to wait for, text to scroll to, and selectors to `mask` (keys, emails). Images go
+text or selector to wait for, text to scroll to, selectors to `hide` (overlays such as sticky footers) and to `mask` (keys, emails). Images go
 to `portal/walkthrough/<use case>/<step>.png` at 1440×900, and `portal/walkthrough/index.json`
 lists them, so the page only shows images that exist. Unreachable services are skipped and listed.
 

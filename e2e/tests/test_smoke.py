@@ -17,4 +17,4 @@ def test_ui_shows_expected_content(page, case, step):
     if spec.get("wait_for_selector"):
         page.locator(spec["wait_for_selector"]).first.wait_for(timeout=20_000)
     if spec.get("wait_for_text"):
-        page.get_by_text(spec["wait_for_text"]).first.wait_for(timeout=20_000)
+        page.get_by_text(spec["wait_for_text"]).filter(visible=True).first.wait_for(timeout=20_000)

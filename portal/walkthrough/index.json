@@ -1,8 +1,15 @@
 {
   "screenshots": [
+    "elt/dashboard",
     "governance/controls",
+    "ml/drift",
     "ml/registry",
+    "pipeline/airflow",
     "pipeline/breaks",
+    "pipeline/freshness",
+    "pipeline/lineage",
+    "realtime/decisions",
+    "realtime/scorer",
     "realtime/stream",
     "tour/architecture",
     "tour/services"

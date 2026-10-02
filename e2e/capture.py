@@ -1,7 +1,7 @@
 """Capture the walkthrough's screenshots into portal/walkthrough/<use case>/<step>.png.
 
 Each step's `screenshot` spec in portal/walkthrough.json says which service and path to open, what
-to wait for and what to mask; URLs come from services.json, so pointing --services at another
+to wait for, what to hide (overlays) and what to mask (secrets); URLs come from services.json, so pointing --services at another
 environment's file (GCP, say) re-captures every image from there.
 
     e2e/.venv/Scripts/python e2e/capture.py                      # every step whose service is up
@@ -44,9 +44,18 @@ def capture(page, url: str, spec: dict, target: Path) -> None:
     if spec.get("wait_for_selector"):
         page.locator(spec["wait_for_selector"]).first.wait_for(timeout=20_000)
     if spec.get("wait_for_text"):
-        page.get_by_text(spec["wait_for_text"]).first.wait_for(timeout=20_000)
+        page.get_by_text(spec["wait_for_text"]).filter(visible=True).first.wait_for(timeout=20_000)
+    for selector in spec.get("hide", []):  # overlays such as sticky footers; removed, not boxed like a mask
+        page.add_style_tag(content=f"{selector} {{ display: none !important; }}")
     if spec.get("scroll_to_text"):
-        page.get_by_text(spec["scroll_to_text"]).first.evaluate("e => e.scrollIntoView({block: 'start'})")
+        # Jump to the heading, then back off so a sticky toolbar doesn't cover it.
+        page.get_by_text(spec["scroll_to_text"]).filter(visible=True).first.evaluate("""e => {
+            e.scrollIntoView({block: 'start'});
+            let p = e.parentElement;
+            while (p && p.scrollTop === 0) p = p.parentElement;  // whichever ancestor actually scrolled
+            const covered = 64 - e.getBoundingClientRect().top;  // 0 or less near the page bottom
+            if (covered > 0) (p || document.scrollingElement).scrollTop -= covered;
+        }""")
     page.wait_for_timeout(spec.get("delay_ms", 500))
     masks = [page.locator(selector) for selector in spec.get("mask", [])]
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -49,9 +49,9 @@
           "title": "Explore the models and their lineage",
           "body": "Staging models clean the raw tables, marts publish facts and dimensions, and every model has tests and documented columns, including which ones hold personal data.",
           "run": "cd warehouse\\dbt; uv run dbt docs generate --profiles-dir .; uv run dbt docs serve --profiles-dir . --port 8081",
-          "expect": "The dbt docs site; the lineage graph button is at the bottom right.",
+          "expect": "The model's description, columns and tests; the lineage graph button is at the bottom right.",
           "links": [{"service": "dbt docs", "label": "dbt docs"}],
-          "screenshot": {"service": "dbt docs", "path": "/", "wait_for_text": "payments", "delay_ms": 1500, "alt": "dbt docs site"}
+          "screenshot": {"service": "dbt docs", "path": "/#!/model/model.payments.fct_transactions", "wait_for_text": "Columns", "delay_ms": 1500, "alt": "dbt docs for fct_transactions"}
         },
         {
           "id": "freshness",
@@ -59,7 +59,7 @@
           "body": "Freshness is measured per layer (source, raw, mart), so an alert says which stage stalled, not just that the mart is old. The SLO: `fct_transactions` changed within 15 minutes, 99% of the time.",
           "expect": "All three ages under 15 minutes, and the 24-hour share near 100%.",
           "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}, {"doc": "slos.md", "label": "SLOs"}],
-          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "Is the data fresh?", "delay_ms": 3000, "alt": "Freshness row of the Grafana dashboard"}
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "hide": ["[data-testid=public-dashboard-footer]"], "wait_for_text": "Is the data fresh?", "delay_ms": 3000, "alt": "Freshness row of the Grafana dashboard"}
         },
         {
           "id": "breaks",
@@ -125,7 +125,7 @@
           "title": "Watch the decisions",
           "body": "The scorer's SLOs (99.9% of requests succeed, 99% under 50 ms) and its decisions per second. The attack shows as a spike in reviews.",
           "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}],
-          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "Is scoring healthy?", "scroll_to_text": "Is scoring healthy?", "delay_ms": 3000, "alt": "Scoring row of the Grafana dashboard"}
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "hide": ["[data-testid=public-dashboard-footer]"], "wait_for_text": "Is scoring healthy?", "scroll_to_text": "Is scoring healthy?", "delay_ms": 3000, "alt": "Scoring row of the Grafana dashboard"}
         },
         {
           "id": "scorer",
@@ -159,7 +159,7 @@
           "title": "Watch for drift",
           "body": "The population stability index of each live feature against the training data. Below 0.1 is stable; above 0.25 alerts.",
           "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}, {"doc": "runbooks/model-drift.md", "label": "Runbook: drift"}],
-          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "Has the model's input drifted?", "scroll_to_text": "Has the model's input drifted?", "delay_ms": 3000, "alt": "Drift row of the Grafana dashboard"}
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "hide": ["[data-testid=public-dashboard-footer]"], "wait_for_text": "Has the model's input drifted?", "scroll_to_text": "Has the model's input drifted?", "delay_ms": 3000, "alt": "Drift row of the Grafana dashboard"}
         }
       ]
     },
@@ -202,7 +202,7 @@
           "body": "Estimated cost for a day and a month, cost per million records, how busy the single warehouse writer is, rows written per record ingested, and what's left of each 30-day error budget.",
           "expect": "Error budgets near 100%; rows written per record ingested well above 1, because table marts rebuild in full every run.",
           "links": [{"service": "Grafana", "path": "/d/payments-platform", "label": "Grafana dashboard"}, {"doc": "elt-metrics.md", "label": "ELT metrics"}],
-          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "wait_for_text": "What does ELT cost", "scroll_to_text": "What does ELT cost", "delay_ms": 3000, "alt": "ELT cost and SLO row of the Grafana dashboard"}
+          "screenshot": {"service": "Grafana", "path": "/d/payments-platform?kiosk", "hide": ["[data-testid=public-dashboard-footer]"], "wait_for_text": "What does ELT cost", "scroll_to_text": "What does ELT cost", "delay_ms": 3000, "alt": "ELT cost and SLO row of the Grafana dashboard"}
         },
         {
           "id": "slos",
