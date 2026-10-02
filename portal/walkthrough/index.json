@@ -1,6 +1,9 @@
 {
   "screenshots": [
     "governance/controls",
+    "ml/registry",
+    "pipeline/breaks",
+    "realtime/stream",
     "tour/architecture",
     "tour/services"
   ]
